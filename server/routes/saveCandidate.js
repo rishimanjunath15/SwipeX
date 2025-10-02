@@ -21,6 +21,7 @@ router.post('/save-candidate', async (req, res) => {
       questions,
       totalScore,
       summary,
+      preInterviewChat,
     } = req.body;
 
     // Validate required fields
@@ -46,7 +47,11 @@ router.post('/save-candidate', async (req, res) => {
       github: github || '',
       linkedin: linkedin || '',
       resumeText: resumeText || '',
-      questions,
+      preInterviewChat: preInterviewChat || [],
+      questions: questions.map((q, index) => ({
+        ...q,
+        questionNumber: q.questionNumber || index + 1,
+      })),
       totalScore: totalScore || 0,
       summary: summary || '',
       status: 'completed',

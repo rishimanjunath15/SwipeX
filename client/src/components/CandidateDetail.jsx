@@ -155,6 +155,38 @@ export default function CandidateDetail({ candidateId, onBack }) {
         </CardContent>
       </Card>
 
+      {/* Pre-Interview Chat */}
+      {candidate.preInterviewChat && candidate.preInterviewChat.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Pre-Interview Conversation</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {candidate.preInterviewChat.map((msg, index) => (
+                <div
+                  key={index}
+                  className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div
+                    className={`rounded-lg px-4 py-2 max-w-[80%] ${
+                      msg.sender === 'user'
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-gray-100 text-gray-900'
+                    }`}
+                  >
+                    <p className="text-sm whitespace-pre-wrap">{msg.message}</p>
+                    <p className="text-xs opacity-70 mt-1">
+                      {new Date(msg.timestamp).toLocaleTimeString()}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Questions and Answers */}
       {candidate.questions && candidate.questions.length > 0 && (
         <Card>

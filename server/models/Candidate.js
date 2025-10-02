@@ -41,9 +41,24 @@ const candidateSchema = new mongoose.Schema({
     default: '',
   },
   
+  // Pre-interview chat messages
+  preInterviewChat: [{
+    sender: {
+      type: String,
+      enum: ['ai', 'user'],
+      required: true,
+    },
+    message: String,
+    timestamp: {
+      type: Date,
+      default: Date.now,
+    },
+  }],
+  
   // Interview data
   questions: [{
     questionId: String,
+    questionNumber: Number, // Sequential number (1-6)
     difficulty: String,
     question: String,
     answer: String,
@@ -51,6 +66,7 @@ const candidateSchema = new mongoose.Schema({
     feedback: String,
     timeLimit: Number,
     timeTaken: Number,
+    answeredAt: Date,
   }],
   
   // Final results
@@ -74,6 +90,9 @@ const candidateSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now,
+  },
+  interviewStartedAt: {
+    type: Date,
   },
   completedAt: {
     type: Date,

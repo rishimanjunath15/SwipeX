@@ -76,6 +76,40 @@ export default function IntervieweePage() {
     }
   }, []);
 
+  // Save chat messages to database (debounced)
+  const saveChatToDatabase = useCallback(async (chatMessages) => {
+    if (!candidate.email) return;
+    
+    try {
+      await apiClient.post('/api/update-chat', {
+        email: candidate.email,
+        chatMessages: chatMessages,
+      });
+    } catch (error) {
+      console.error('Failed to save chat:', error);
+      // Don't show error to user, just log it
+    }
+  }, [candidate.email]);
+
+  // Save interview progress to database
+  const saveProgressToDatabase = useCallback(async () => {
+    if (!candidate.email) return;
+    
+    try {
+      await apiClient.post('/api/save-progress', {
+        sessionId: interview.sessionId || Date.now().toString(),
+        profile: candidate,
+        preInterviewChat: messages.filter(m => interview.status !== 'interviewing'),
+        questions: interview.questions,
+        resumeText: interview.resumeText,
+        interviewStartedAt: interview.startTime,
+      });
+    } catch (error) {
+      console.error('Failed to save progress:', error);
+      // Don't show error to user, just log it
+    }
+  }, [candidate, interview, messages]);
+
   // Add message to chat with optional delay for AI typing effect
   const addMessage = useCallback((sender, text, type = null, delay = 0) => {
     const timestamp = new Date().toLocaleTimeString('en-US', {
@@ -83,16 +117,32 @@ export default function IntervieweePage() {
       minute: '2-digit',
     });
     
+    const newMessage = { sender, text, type, timestamp };
+    
     if (sender === 'ai' && delay > 0) {
       setIsAiTyping(true);
       setTimeout(() => {
-        setMessages((prev) => [...prev, { sender, text, type, timestamp }]);
+        setMessages((prev) => {
+          const updated = [...prev, newMessage];
+          // Save chat to database if profile exists
+          if (candidate.email && interview.status !== 'interviewing') {
+            saveChatToDatabase(updated);
+          }
+          return updated;
+        });
         setIsAiTyping(false);
       }, delay);
     } else {
-      setMessages((prev) => [...prev, { sender, text, type, timestamp }]);
+      setMessages((prev) => {
+        const updated = [...prev, newMessage];
+        // Save chat to database if profile exists
+        if (candidate.email && interview.status !== 'interviewing') {
+          saveChatToDatabase(updated);
+        }
+        return updated;
+      });
     }
-  }, []);
+  }, [candidate.email, interview.status]);
 
   // Handle resume upload success
   const handleUploadSuccess = useCallback(async (data) => {
@@ -241,7 +291,11 @@ export default function IntervieweePage() {
     setReadyToBegin(false);
     setIsAiTyping(true);
     
-    dispatch(startInterview({ sessionId: Date.now().toString() }));
+    const sessionId = Date.now().toString();
+    dispatch(startInterview({ sessionId }));
+    
+    // Save that interview has started
+    saveProgressToDatabase();
     
     setTimeout(() => {
       setIsAiTyping(false);
@@ -252,7 +306,7 @@ export default function IntervieweePage() {
         generateNextQuestion(1, 'easy');
       }, 1000);
     }, 800);
-  }, [dispatch, addMessage, generateNextQuestion]);
+  }, [dispatch, addMessage, generateNextQuestion, saveProgressToDatabase]);
 
   // Handle answer submission
   const handleAnswerSubmit = useCallback(async (answer) => {
@@ -295,6 +349,11 @@ export default function IntervieweePage() {
         feedback: evalData.feedback,
       }));
 
+      // Save progress to database after evaluation
+      setTimeout(() => {
+        saveProgressToDatabase();
+      }, 500);
+
       // Show feedback with delay
       setTimeout(() => {
         setIsAiTyping(false);
@@ -324,7 +383,7 @@ export default function IntervieweePage() {
       setIsProcessing(false);
       dispatch(setError('Failed to evaluate answer. Please try again.'));
     }
-  }, [isProcessing, interview.questions, interview.currentQuestionIndex, dispatch, addMessage, generateNextQuestion]);
+  }, [isProcessing, interview.questions, interview.currentQuestionIndex, dispatch, addMessage, generateNextQuestion, saveProgressToDatabase]);
 
   // Generate final summary
   const generateFinalSummary = async () => {
@@ -355,6 +414,13 @@ export default function IntervieweePage() {
   // Save candidate data to database
   const saveCandidateToDatabase = async (summaryData) => {
     try {
+      // Ensure questions have sequential numbering
+      const questionsWithNumbers = interview.questions.map((q, index) => ({
+        ...q,
+        questionNumber: index + 1,
+        answeredAt: new Date().toISOString(),
+      }));
+
       await apiClient.post('/api/save-candidate', {
         name: candidate.name,
         email: candidate.email,
@@ -364,9 +430,10 @@ export default function IntervieweePage() {
         github: candidate.github,
         linkedin: candidate.linkedin,
         resumeText: interview.resumeText,
-        questions: interview.questions,
+        questions: questionsWithNumbers,
         totalScore: summaryData.totalScore,
         summary: summaryData.summary,
+        preInterviewChat: messages.filter(m => m.type !== 'question' && m.type !== 'eval'),
       });
     } catch (error) {
       console.error('Error saving candidate:', error);
