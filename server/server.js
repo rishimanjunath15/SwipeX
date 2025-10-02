@@ -14,7 +14,6 @@ import interviewActionRoute from './routes/interviewAction.js';
 import candidatesRoute from './routes/candidates.js';
 import saveCandidateRoute from './routes/saveCandidate.js';
 import saveCandidateProgressRoute from './routes/saveCandidateProgress.js';
-import checkCandidateRoute from './routes/checkCandidate.js';
 
 // Load environment variables
 dotenv.config();
@@ -128,7 +127,6 @@ app.use('/api', interviewActionRoute);
 app.use('/api', candidatesRoute);
 app.use('/api', saveCandidateRoute);
 app.use('/api', saveCandidateProgressRoute);
-app.use('/api', checkCandidateRoute);
 
 // Health check endpoint
 app.get('/api/health', async (req, res) => {

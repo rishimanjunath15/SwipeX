@@ -65,6 +65,18 @@ const candidateSlice = createSlice({
       state.savedCandidates.unshift(action.payload); // Add to beginning
     },
     
+    // Remove a candidate from saved list
+    removeSavedCandidate: (state, action) => {
+      const candidateId = action.payload;
+      state.savedCandidates = state.savedCandidates.filter(
+        (candidate) => candidate._id !== candidateId
+      );
+      // If the deleted candidate was selected, clear selection
+      if (state.selectedCandidate?._id === candidateId) {
+        state.selectedCandidate = null;
+      }
+    },
+    
     // Set selected candidate for detail view
     setSelectedCandidate: (state, action) => {
       state.selectedCandidate = action.payload;
@@ -88,6 +100,7 @@ export const {
   clearProfile,
   setSavedCandidates,
   addSavedCandidate,
+  removeSavedCandidate,
   setSelectedCandidate,
   setLoading,
   setSavingCandidate,

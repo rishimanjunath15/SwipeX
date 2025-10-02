@@ -1,17 +1,22 @@
 import React, { useEffect, useState } from 'react';
+import { useDispatch } from 'react-redux';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
-import { ArrowLeft, User, Mail, Phone, Award, Calendar, MessageSquare } from 'lucide-react';
+import { ArrowLeft, User, Mail, Phone, Award, Calendar, MessageSquare, Trash2 } from 'lucide-react';
 import apiClient from '../lib/api';
+import { removeSavedCandidate } from '../redux/candidateSlice';
 
 /**
  * CandidateDetail Component
  * Shows full details of a candidate including all Q&A and feedback
  */
 export default function CandidateDetail({ candidateId, onBack }) {
+  const dispatch = useDispatch();
   const [candidate, setCandidate] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (candidateId) {
@@ -51,6 +56,35 @@ export default function CandidateDetail({ candidateId, onBack }) {
     return 'text-red-600';
   };
 
+  const handleDeleteClick = () => {
+    setShowDeleteConfirm(true);
+  };
+
+  const handleCancelDelete = () => {
+    setShowDeleteConfirm(false);
+  };
+
+  const handleConfirmDelete = async () => {
+    try {
+      setDeleting(true);
+      
+      // Delete from MongoDB via API
+      await apiClient.delete(`/api/candidate/${candidateId}`);
+      
+      // Remove from Redux store
+      dispatch(removeSavedCandidate(candidateId));
+      
+      // Go back to list after successful deletion
+      onBack();
+    } catch (err) {
+      console.error('Error deleting candidate:', err);
+      setError('Failed to delete candidate. Please try again.');
+    } finally {
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
+
   if (loading) {
     return (
       <Card className="w-full">
@@ -81,11 +115,41 @@ export default function CandidateDetail({ candidateId, onBack }) {
 
   return (
     <div className="space-y-6 w-full">
-      {/* Back Button */}
-      <Button onClick={onBack} variant="outline">
-        <ArrowLeft size={16} className="mr-2" />
-        Back to List
-      </Button>
+      {/* Back Button and Delete Button */}
+      <div className="flex items-center justify-between">
+        <Button onClick={onBack} variant="outline">
+          <ArrowLeft size={16} className="mr-2" />
+          Back to List
+        </Button>
+        
+        {showDeleteConfirm ? (
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="destructive"
+              onClick={handleConfirmDelete}
+              disabled={deleting}
+            >
+              {deleting ? 'Deleting...' : 'Confirm Delete'}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleCancelDelete}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+          </div>
+        ) : (
+          <Button
+            variant="outline"
+            onClick={handleDeleteClick}
+            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+          >
+            <Trash2 size={16} className="mr-2" />
+            Delete Candidate
+          </Button>
+        )}
+      </div>
 
       {/* Candidate Profile Card */}
       <Card>

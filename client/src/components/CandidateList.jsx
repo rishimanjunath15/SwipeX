@@ -1,17 +1,22 @@
 import React, { useEffect, useState } from 'react';
+import { useDispatch } from 'react-redux';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
-import { Eye, Mail, Phone, Calendar, Award } from 'lucide-react';
+import { Eye, Mail, Phone, Calendar, Award, Trash2 } from 'lucide-react';
 import apiClient from '../lib/api';
+import { removeSavedCandidate } from '../redux/candidateSlice';
 
 /**
  * CandidateList Component
  * Displays table of all interviewed candidates (for Interviewer view)
  */
 export default function CandidateList({ onSelectCandidate }) {
+  const dispatch = useDispatch();
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   useEffect(() => {
     fetchCandidates();
@@ -45,6 +50,37 @@ export default function CandidateList({ onSelectCandidate }) {
     if (score >= 80) return 'text-green-600 bg-green-50';
     if (score >= 60) return 'text-yellow-600 bg-yellow-50';
     return 'text-red-600 bg-red-50';
+  };
+
+  const handleDeleteClick = (candidateId) => {
+    setConfirmDeleteId(candidateId);
+  };
+
+  const handleCancelDelete = () => {
+    setConfirmDeleteId(null);
+  };
+
+  const handleConfirmDelete = async (candidateId) => {
+    try {
+      setDeletingId(candidateId);
+      
+      // Delete from MongoDB via API
+      await apiClient.delete(`/api/candidate/${candidateId}`);
+      
+      // Remove from local state
+      setCandidates(candidates.filter(c => c._id !== candidateId));
+      
+      // Remove from Redux store
+      dispatch(removeSavedCandidate(candidateId));
+      
+      setConfirmDeleteId(null);
+      setError(null);
+    } catch (err) {
+      console.error('Error deleting candidate:', err);
+      setError('Failed to delete candidate. Please try again.');
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   if (loading) {
@@ -100,7 +136,7 @@ export default function CandidateList({ onSelectCandidate }) {
                   <th className="text-left py-3 px-4 font-semibold text-gray-700">Contact</th>
                   <th className="text-left py-3 px-4 font-semibold text-gray-700">Score</th>
                   <th className="text-left py-3 px-4 font-semibold text-gray-700">Date</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Actions</th>
+                  <th className="text-right py-3 px-4 font-semibold text-gray-700">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -143,14 +179,51 @@ export default function CandidateList({ onSelectCandidate }) {
                       </div>
                     </td>
                     <td className="py-3 px-4">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => onSelectCandidate(candidate._id)}
-                      >
-                        <Eye size={16} className="mr-1" />
-                        View Details
-                      </Button>
+                      <div className="flex items-center justify-end space-x-2">
+                        {confirmDeleteId === candidate._id ? (
+                          // Show confirmation buttons
+                          <>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => handleConfirmDelete(candidate._id)}
+                              disabled={deletingId === candidate._id}
+                            >
+                              {deletingId === candidate._id ? 'Deleting...' : 'Confirm Delete'}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={handleCancelDelete}
+                              disabled={deletingId === candidate._id}
+                            >
+                              Cancel
+                            </Button>
+                          </>
+                        ) : (
+                          // Show view and delete buttons
+                          <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => onSelectCandidate(candidate._id)}
+                            >
+                              <Eye size={16} className="mr-1" />
+                              View
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleDeleteClick(candidate._id)}
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              disabled={deletingId === candidate._id}
+                            >
+                              <Trash2 size={16} className="mr-1" />
+                              Delete
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

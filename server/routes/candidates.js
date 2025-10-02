@@ -52,4 +52,37 @@ router.get('/candidate/:id', async (req, res) => {
   }
 });
 
+/**
+ * DELETE /api/candidate/:id
+ * Deletes a candidate from the database
+ */
+router.delete('/candidate/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const candidate = await Candidate.findByIdAndDelete(id);
+
+    if (!candidate) {
+      return res.status(404).json({
+        error: 'Candidate not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Candidate deleted successfully',
+      deletedCandidate: {
+        id: candidate._id,
+        name: candidate.name,
+        email: candidate.email,
+      },
+    });
+  } catch (error) {
+    console.error('Delete candidate error:', error);
+    res.status(500).json({
+      error: 'Failed to delete candidate',
+    });
+  }
+});
+
 export default router;
