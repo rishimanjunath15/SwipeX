@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import ResumeUpload from '../components/ResumeUpload';
 import ChatWindow from '../components/ChatWindow';
@@ -65,9 +65,6 @@ export default function IntervieweePage() {
   const [isAiTyping, setIsAiTyping] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [readyToBegin, setReadyToBegin] = useState(false);
-
-  // Refs to prevent duplicate operations
-  const isGeneratingQuestion = useRef(false);
 
   // Check for unfinished session on mount
   useEffect(() => {
@@ -251,33 +248,10 @@ export default function IntervieweePage() {
 
   // Generate next question
   const generateNextQuestion = useCallback(async (questionNumber, difficulty) => {
-    // CRITICAL: Prevent generating more than 6 questions
-    if (questionNumber > 6) {
-      console.error('❌ Attempted to generate question beyond limit:', questionNumber);
-      return;
-    }
-    
-    // CRITICAL: Check if this question already exists
-    const questionId = `q${questionNumber}`;
-    const existingQuestion = interview.questions.find(q => q.questionId === questionId);
-    if (existingQuestion) {
-      console.error('❌ Question already exists:', questionId);
-      return;
-    }
-    
-    // CRITICAL: Prevent concurrent question generation
-    if (isGeneratingQuestion.current) {
-      console.error('❌ Already generating a question, skipping duplicate call');
-      return;
-    }
-    
-    isGeneratingQuestion.current = true;
     setIsAiTyping(true);
     setIsProcessing(true);
     
     try {
-      console.log(`🔄 Generating question ${questionNumber} (${difficulty})...`);
-      
       // Get previous questions to avoid topic repetition
       const previousQuestions = interview.questions.map(q => q.question).join('\n');
       
@@ -294,9 +268,7 @@ export default function IntervieweePage() {
       const questionData = response.data;
       
       // Ensure questionId matches the sequential number
-      questionData.questionId = questionId;
-      
-      console.log(`✅ Generated question ${questionNumber}:`, questionData.questionId);
+      questionData.questionId = `q${questionNumber}`;
       
       // Add question to Redux store
       dispatch(addQuestion(questionData));
@@ -307,13 +279,11 @@ export default function IntervieweePage() {
         // Don't add question to chat - it's displayed in QuestionCard component
         // addMessage('ai', questionData.question, 'question');
         setIsProcessing(false);
-        isGeneratingQuestion.current = false; // Reset flag
       }, 1000);
     } catch (error) {
       console.error('Error generating question:', error);
       setIsAiTyping(false);
       setIsProcessing(false);
-      isGeneratingQuestion.current = false; // Reset flag on error
       dispatch(setError('Failed to generate question. Please try again.'));
     }
   }, [interview.resumeText, interview.questions, dispatch, addMessage]);
@@ -377,20 +347,17 @@ export default function IntervieweePage() {
 
       const evalData = response.data;
       
-      console.log(`📊 Evaluation received for Q${questionNum}:`, {
-        questionId: currentQ.questionId,
-        score: evalData.score,
-        isLastQuestion
-      });
-      
       // Update question with score and feedback
       dispatch(updateQuestionEvaluation({
         questionId: currentQ.questionId,
         score: evalData.score,
         feedback: evalData.feedback,
       }));
-      
-      console.log(`✅ Score updated in Redux for Q${questionNum}`);
+
+      // Save progress to database after evaluation
+      setTimeout(() => {
+        saveProgressToDatabase();
+      }, 500);
 
       // Show feedback with delay
       setTimeout(() => {
@@ -398,50 +365,14 @@ export default function IntervieweePage() {
         addMessage('ai', `Score: ${evalData.score}/100\n\n${evalData.feedback}`, 'eval');
         
         if (isLastQuestion) {
-          // For the 6th question: CRITICAL - manually build complete questions array
-          // Don't rely on Redux state which may not be updated yet
-          const completeQuestions = interview.questions.slice(); // Create a copy
-          
-          // Find and update the last question with the evaluation data
-          const lastQuestionIndex = completeQuestions.findIndex(q => q.questionId === currentQ.questionId);
-          if (lastQuestionIndex !== -1) {
-            completeQuestions[lastQuestionIndex] = {
-              ...completeQuestions[lastQuestionIndex],
-              answer: answer,
-              score: evalData.score,
-              feedback: evalData.feedback,
-              timeTaken: currentQ.timeLimit - (interview.timeRemaining || 0),
-            };
-          }
-          
-          console.log('Last question answered. Complete questions array:', {
-            currentIndex: interview.currentQuestionIndex,
-            totalQuestions: completeQuestions.length,
-            lastQuestionScore: evalData.score,
-            allScores: completeQuestions.map(q => q.score),
-            lastQuestion: completeQuestions[5]
-          });
-          
-          // Wait a bit to show feedback, then generate summary
+          // Generate final summary
           setTimeout(() => {
-            setIsProcessing(false);
-            saveProgressToDatabase();
-          }, 1000);
-          
-          // Generate final summary with the complete questions array
-          setTimeout(() => {
-            console.log('Generating final summary now with complete data...');
-            generateFinalSummary(completeQuestions);
-          }, 3000);
+            generateFinalSummary();
+          }, 1500);
         } else {
-          // For questions 1-5: Generate next question
-          setIsProcessing(false);
-          
           // Calculate next question number
-          const nextQuestionNumber = interview.currentQuestionIndex + 2;
+          const nextQuestionNumber = interview.currentQuestionIndex + 2; // +2 because: current (0-5) + 1 for next index + 1 for human numbering
           const nextDifficulty = nextQuestionNumber <= 2 ? 'easy' : nextQuestionNumber <= 4 ? 'medium' : 'hard';
-          
-          console.log(`Moving to question ${nextQuestionNumber} (${nextDifficulty})`);
           
           // Generate next question FIRST (this adds it to the array)
           // THEN move to next question index
@@ -462,33 +393,43 @@ export default function IntervieweePage() {
     }
   }, [isProcessing, interview.questions, interview.currentQuestionIndex, dispatch, addMessage, generateNextQuestion, saveProgressToDatabase]);
 
-  // Save candidate data to database
-  const saveCandidateToDatabase = useCallback(async (summaryData, questionsToSave) => {
+  // Generate final summary
+  const generateFinalSummary = async () => {
     try {
-      // Use the provided questions or fall back to interview.questions
-      const questions = questionsToSave || interview.questions;
-      
-      console.log('Saving candidate with questions:', questions.length);
-      console.log('Summary data:', summaryData);
-      questions.forEach((q, idx) => {
-        console.log(`Q${idx + 1}: answer=${q.answer?.substring(0, 50)}..., score=${q.score}, questionId=${q.questionId}`);
+      const response = await apiClient.post('/api/generate-summary', {
+        questions: interview.questions,
+        candidateName: candidate.name,
       });
+
+      const summaryData = response.data;
       
-      // Ensure questions have sequential numbering and all required fields
-      const questionsWithNumbers = questions.map((q, index) => ({
-        questionId: q.questionId || `q${index + 1}`,
+      dispatch(setFinalResults({
+        totalScore: summaryData.totalScore,
+        summary: summaryData.summary,
+        breakdown: summaryData.breakdown,
+      }));
+
+      // Save to database
+      await saveCandidateToDatabase(summaryData);
+      
+      addMessage('ai', 'Interview completed! Here are your results.');
+    } catch (error) {
+      console.error('Error generating summary:', error);
+      dispatch(setError('Failed to generate final summary.'));
+    }
+  };
+
+  // Save candidate data to database
+  const saveCandidateToDatabase = async (summaryData) => {
+    try {
+      // Ensure questions have sequential numbering
+      const questionsWithNumbers = interview.questions.map((q, index) => ({
+        ...q,
         questionNumber: index + 1,
-        difficulty: q.difficulty,
-        question: q.question,
-        answer: q.answer || '', // Ensure answer is not undefined
-        score: q.score || 0,
-        feedback: q.feedback || '',
-        timeLimit: q.timeLimit || 0,
-        timeTaken: q.timeTaken || 0,
         answeredAt: new Date().toISOString(),
       }));
 
-      const candidateData = {
+      await apiClient.post('/api/save-candidate', {
         name: candidate.name,
         email: candidate.email,
         phone: candidate.phone,
@@ -501,103 +442,11 @@ export default function IntervieweePage() {
         totalScore: summaryData.totalScore,
         summary: summaryData.summary,
         preInterviewChat: messages.filter(m => m.type !== 'question' && m.type !== 'eval'),
-      };
-
-      console.log('Final candidate data to save:', {
-        totalScore: candidateData.totalScore,
-        questionsCount: candidateData.questions.length,
-        questions: candidateData.questions.map(q => ({ questionId: q.questionId, score: q.score }))
       });
-
-      await apiClient.post('/api/save-candidate', candidateData);
-      
-      console.log('Candidate saved successfully!');
     } catch (error) {
       console.error('Error saving candidate:', error);
     }
-  }, [candidate, interview.questions, interview.resumeText, messages]);
-
-  // Generate final summary
-  const generateFinalSummary = useCallback(async (questionsOverride = null) => {
-    try {
-      // CRITICAL: Use provided questions or get from Redux
-      // questionsOverride is used to pass complete data for 6th question
-      const currentQuestions = questionsOverride || interview.questions;
-      
-      console.log('=== GENERATING FINAL SUMMARY ===');
-      console.log('Total questions:', currentQuestions.length);
-      console.log('Detailed question data:');
-      currentQuestions.forEach((q, idx) => {
-        console.log(`  Q${idx + 1} (${q.questionId}):`, {
-          difficulty: q.difficulty,
-          hasQuestion: !!q.question,
-          hasAnswer: !!q.answer,
-          score: q.score,
-          hasFeedback: !!q.feedback
-        });
-      });
-      
-      // Ensure we have all 6 questions
-      if (currentQuestions.length !== 6) {
-        console.error('❌ Expected 6 questions, got:', currentQuestions.length);
-        dispatch(setError('Interview incomplete. Please restart.'));
-        return;
-      }
-
-      // Check if all questions have scores
-      const questionsWithScores = currentQuestions.filter(q => 
-        q.score !== undefined && 
-        q.score !== null && 
-        typeof q.score === 'number'
-      );
-      
-      console.log(`Questions with valid scores: ${questionsWithScores.length}/6`);
-      
-      if (questionsWithScores.length !== 6) {
-        console.error('❌ Not all questions have valid scores!');
-        console.error('Missing scores for questions:', currentQuestions
-          .map((q, idx) => ({ index: idx + 1, questionId: q.questionId, score: q.score }))
-          .filter(q => !q.score || typeof q.score !== 'number')
-        );
-      }
-      
-      const response = await apiClient.post('/api/generate-summary', {
-        questions: currentQuestions,
-        candidateName: candidate.name,
-      });
-
-      const summaryData = response.data;
-      console.log('Summary response:', summaryData);
-      
-      if (!summaryData.totalScore || summaryData.totalScore === 0) {
-        console.error('Summary generation returned zero score:', summaryData);
-        // Fallback: calculate average manually
-        const validScores = currentQuestions
-          .map(q => q.score)
-          .filter(score => typeof score === 'number' && score >= 0 && score <= 100);
-        
-        if (validScores.length > 0) {
-          const manualTotalScore = Math.round(validScores.reduce((sum, score) => sum + score, 0) / validScores.length);
-          console.log('Manual calculated score:', manualTotalScore);
-          summaryData.totalScore = manualTotalScore;
-        }
-      }
-      
-      dispatch(setFinalResults({
-        totalScore: summaryData.totalScore,
-        summary: summaryData.summary,
-        breakdown: summaryData.breakdown,
-      }));
-
-      // Save to database with the SAME questions we used for summary
-      await saveCandidateToDatabase(summaryData, currentQuestions);
-      
-      addMessage('ai', 'Interview completed! Here are your results.');
-    } catch (error) {
-      console.error('Error generating summary:', error);
-      dispatch(setError('Failed to generate final summary.'));
-    }
-  }, [interview.questions, candidate.name, dispatch, addMessage, saveCandidateToDatabase]);
+  };
 
   // Handle start over
   const handleStartOver = () => {
@@ -681,7 +530,7 @@ export default function IntervieweePage() {
             <CandidateProfile profile={candidate} />
             <ChatWindow messages={messages} isAiTyping={isAiTyping} />
             
-            {interview.currentQuestionIndex < interview.questions.length && interview.currentQuestionIndex < 6 && !isProcessing && (
+            {interview.currentQuestionIndex < interview.questions.length && !isProcessing && (
               <QuestionCard
                 question={interview.questions[interview.currentQuestionIndex]}
                 questionNumber={interview.currentQuestionIndex + 1}

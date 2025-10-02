@@ -62,23 +62,7 @@ const interviewSlice = createSlice({
     
     // Add a new question to the array
     addQuestion: (state, action) => {
-      // CRITICAL: Prevent duplicate questions
-      const newQuestion = action.payload;
-      const exists = state.questions.some(q => q.questionId === newQuestion.questionId);
-      
-      if (exists) {
-        console.error('❌ Attempted to add duplicate question:', newQuestion.questionId);
-        return;
-      }
-      
-      // CRITICAL: Prevent adding more than 6 questions
-      if (state.questions.length >= 6) {
-        console.error('❌ Attempted to add question beyond limit. Current count:', state.questions.length);
-        return;
-      }
-      
-      console.log(`✅ Adding question ${newQuestion.questionId} to Redux (${state.questions.length + 1}/6)`);
-      state.questions.push(newQuestion);
+      state.questions.push(action.payload);
     },
     
     // Update current question answer
@@ -108,7 +92,7 @@ const interviewSlice = createSlice({
     
     // Move to next question
     nextQuestion: (state) => {
-      if (state.currentQuestionIndex < 5) { // Allow incrementing up to index 5 (6th question)
+      if (state.currentQuestionIndex < state.questions.length - 1) {
         state.currentQuestionIndex += 1;
         state.currentAnswer = '';
         state.timeRemaining = state.questions[state.currentQuestionIndex]?.timeLimit || null;
