@@ -354,21 +354,21 @@ export default function IntervieweePage() {
         feedback: evalData.feedback,
       }));
 
-      // Save progress to database after evaluation
-      setTimeout(() => {
-        saveProgressToDatabase();
-      }, 500);
-
       // Show feedback with delay
       setTimeout(() => {
         setIsAiTyping(false);
         addMessage('ai', `Score: ${evalData.score}/100\n\n${evalData.feedback}`, 'eval');
         
         if (isLastQuestion) {
-          // Generate final summary
+          // Save progress to database before generating summary
+          setTimeout(() => {
+            saveProgressToDatabase();
+          }, 500);
+          
+          // Generate final summary - wait longer to ensure Redux state is updated
           setTimeout(() => {
             generateFinalSummary();
-          }, 1500);
+          }, 2000);
         } else {
           // Calculate next question number
           const nextQuestionNumber = interview.currentQuestionIndex + 2; // +2 because: current (0-5) + 1 for next index + 1 for human numbering
@@ -394,10 +394,16 @@ export default function IntervieweePage() {
   }, [isProcessing, interview.questions, interview.currentQuestionIndex, dispatch, addMessage, generateNextQuestion, saveProgressToDatabase]);
 
   // Generate final summary
-  const generateFinalSummary = async () => {
+  const generateFinalSummary = useCallback(async () => {
     try {
+      // Use the current interview state - this will always be the latest
+      const currentQuestions = interview.questions;
+      
+      console.log('Generating summary with questions:', currentQuestions.length);
+      console.log('Last question:', currentQuestions[currentQuestions.length - 1]);
+      
       const response = await apiClient.post('/api/generate-summary', {
-        questions: interview.questions,
+        questions: currentQuestions,
         candidateName: candidate.name,
       });
 
@@ -409,23 +415,38 @@ export default function IntervieweePage() {
         breakdown: summaryData.breakdown,
       }));
 
-      // Save to database
-      await saveCandidateToDatabase(summaryData);
+      // Save to database with the SAME questions we used for summary
+      await saveCandidateToDatabase(summaryData, currentQuestions);
       
       addMessage('ai', 'Interview completed! Here are your results.');
     } catch (error) {
       console.error('Error generating summary:', error);
       dispatch(setError('Failed to generate final summary.'));
     }
-  };
+  }, [interview.questions, candidate.name, dispatch, addMessage, saveCandidateToDatabase]);
 
   // Save candidate data to database
-  const saveCandidateToDatabase = async (summaryData) => {
+  const saveCandidateToDatabase = useCallback(async (summaryData, questionsToSave) => {
     try {
-      // Ensure questions have sequential numbering
-      const questionsWithNumbers = interview.questions.map((q, index) => ({
-        ...q,
+      // Use the provided questions or fall back to interview.questions
+      const questions = questionsToSave || interview.questions;
+      
+      console.log('Saving candidate with questions:', questions.length);
+      questions.forEach((q, idx) => {
+        console.log(`Q${idx + 1}: answer=${q.answer?.substring(0, 50)}..., score=${q.score}`);
+      });
+      
+      // Ensure questions have sequential numbering and all required fields
+      const questionsWithNumbers = questions.map((q, index) => ({
+        questionId: q.questionId || `q${index + 1}`,
         questionNumber: index + 1,
+        difficulty: q.difficulty,
+        question: q.question,
+        answer: q.answer || '', // Ensure answer is not undefined
+        score: q.score || 0,
+        feedback: q.feedback || '',
+        timeLimit: q.timeLimit || 0,
+        timeTaken: q.timeTaken || 0,
         answeredAt: new Date().toISOString(),
       }));
 
@@ -443,10 +464,12 @@ export default function IntervieweePage() {
         summary: summaryData.summary,
         preInterviewChat: messages.filter(m => m.type !== 'question' && m.type !== 'eval'),
       });
+      
+      console.log('Candidate saved successfully!');
     } catch (error) {
       console.error('Error saving candidate:', error);
     }
-  };
+  }, [candidate, interview.questions, interview.resumeText, messages]);
 
   // Handle start over
   const handleStartOver = () => {
