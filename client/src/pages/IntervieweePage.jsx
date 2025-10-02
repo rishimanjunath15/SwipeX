@@ -368,25 +368,42 @@ export default function IntervieweePage() {
         addMessage('ai', `Score: ${evalData.score}/100\n\n${evalData.feedback}`, 'eval');
         
         if (isLastQuestion) {
-          // For the 6th question: CRITICAL - ensure all data is synchronized
-          console.log('Last question answered. Current state:', {
-            currentIndex: interview.currentQuestionIndex,
-            totalQuestions: interview.questions.length,
-            lastQuestionScore: evalData.score,
-            allScores: interview.questions.map(q => q.score)
+          // CRITICAL FIX FOR 6TH QUESTION:
+          // Create updated questions array with the new score RIGHT NOW
+          // Don't rely on Redux state which might be stale due to closure
+          const updatedQuestions = interview.questions.map((q, idx) => {
+            if (idx === interview.currentQuestionIndex) {
+              // This is the current (6th) question - update it with the fresh score
+              return {
+                ...q,
+                score: evalData.score,
+                feedback: evalData.feedback
+              };
+            }
+            return q;
           });
           
-          // Wait a bit longer to ensure Redux state is fully updated
+          console.log('🎯 6th question answered. Updated questions array:', {
+            currentIndex: interview.currentQuestionIndex,
+            totalQuestions: updatedQuestions.length,
+            allScores: updatedQuestions.map((q, idx) => ({ 
+              question: idx + 1, 
+              questionId: q.questionId,
+              score: q.score 
+            }))
+          });
+          
+          // Wait for UI updates then generate summary with the CORRECTED questions array
           setTimeout(() => {
             setIsProcessing(false);
             saveProgressToDatabase();
+            
+            // Generate summary with explicitly passed questions that include the 6th score
+            setTimeout(() => {
+              console.log('🚀 Generating final summary with corrected questions...');
+              generateFinalSummaryWithQuestions(updatedQuestions);
+            }, 1500);
           }, 1000);
-          
-          // Generate final summary with longer delay to ensure all scores are saved
-          setTimeout(() => {
-            console.log('Generating final summary now...');
-            generateFinalSummary();
-          }, 3000);
         } else {
           // For questions 1-5: Generate next question
           setIsProcessing(false);
@@ -414,7 +431,7 @@ export default function IntervieweePage() {
       setIsProcessing(false);
       dispatch(setError('Failed to evaluate answer. Please try again.'));
     }
-  }, [isProcessing, interview.questions, interview.currentQuestionIndex, dispatch, addMessage, generateNextQuestion, saveProgressToDatabase]);
+  }, [isProcessing, interview.questions, interview.currentQuestionIndex, interview.timeRemaining, dispatch, addMessage, generateNextQuestion, saveProgressToDatabase, generateFinalSummaryWithQuestions]);
 
   // Save candidate data to database
   const saveCandidateToDatabase = useCallback(async (summaryData, questionsToSave) => {
@@ -471,11 +488,12 @@ export default function IntervieweePage() {
     }
   }, [candidate, interview.questions, interview.resumeText, messages]);
 
-  // Generate final summary
-  const generateFinalSummary = useCallback(async () => {
+  // Generate final summary with explicitly provided questions array
+  const generateFinalSummaryWithQuestions = useCallback(async (questionsArray) => {
     try {
-      // CRITICAL: Get the absolute latest state from Redux
-      const currentQuestions = interview.questions;
+      // Use the provided questions array (which has the fresh 6th question score)
+      // or fall back to Redux state
+      const currentQuestions = questionsArray || interview.questions;
       
       console.log('=== GENERATING FINAL SUMMARY ===');
       console.log('Total questions:', currentQuestions.length);
@@ -551,6 +569,11 @@ export default function IntervieweePage() {
       dispatch(setError('Failed to generate final summary.'));
     }
   }, [interview.questions, candidate.name, dispatch, addMessage, saveCandidateToDatabase]);
+
+  // Legacy wrapper for backwards compatibility
+  const generateFinalSummary = useCallback(async () => {
+    return generateFinalSummaryWithQuestions(interview.questions);
+  }, [generateFinalSummaryWithQuestions, interview.questions]);
 
   // Handle start over
   const handleStartOver = () => {
