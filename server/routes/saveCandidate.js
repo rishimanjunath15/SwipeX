@@ -37,27 +37,6 @@ router.post('/save-candidate', async (req, res) => {
       });
     }
 
-    // Calculate actual total score from questions as backup
-    const validScores = questions
-      .map(q => q.score)
-      .filter(score => typeof score === 'number' && score >= 0 && score <= 100);
-    
-    const calculatedScore = validScores.length > 0
-      ? Math.round(validScores.reduce((sum, score) => sum + score, 0) / validScores.length)
-      : 0;
-    
-    // Use calculated score if provided totalScore is 0 or invalid
-    const finalTotalScore = (totalScore && totalScore > 0) ? totalScore : calculatedScore;
-    
-    console.log('Saving candidate:', {
-      name,
-      email,
-      providedScore: totalScore,
-      calculatedScore,
-      finalScore: finalTotalScore,
-      questionScores: questions.map(q => q.score)
-    });
-
     // Create new candidate record
     const candidate = new Candidate({
       name,
@@ -73,7 +52,7 @@ router.post('/save-candidate', async (req, res) => {
         ...q,
         questionNumber: q.questionNumber || index + 1,
       })),
-      totalScore: finalTotalScore,
+      totalScore: totalScore || 0,
       summary: summary || '',
       status: 'completed',
       completedAt: new Date(),

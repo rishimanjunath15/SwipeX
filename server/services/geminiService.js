@@ -237,39 +237,14 @@ export async function generateFinalSummary(questions, candidateName) {
     console.warn(`Expected 6 questions, but received ${questions.length}`);
   }
   
-  // Calculate total score manually to ensure accuracy
-  const validScores = questions
-    .map(q => q.score)
-    .filter(score => typeof score === 'number' && score >= 0 && score <= 100);
-  
-  const manualTotalScore = validScores.length > 0 
-    ? Math.round(validScores.reduce((sum, score) => sum + score, 0) / validScores.length)
-    : 0;
-  
-  console.log('Manual score calculation:', {
-    validScores,
-    average: manualTotalScore,
-    totalScores: validScores.reduce((sum, score) => sum + score, 0),
-    count: validScores.length
-  });
-  
   // Ensure questions have sequential IDs and proper numbering
   const questionsText = questions.map((q, index) => {
     const questionNum = index + 1;
     const difficulty = q.difficulty || (questionNum <= 2 ? 'easy' : questionNum <= 4 ? 'medium' : 'hard');
-    const score = q.score || 0;
-    return `Q${questionNum} (${difficulty}): ${score}/100 - "${q.question.substring(0, 60)}..."`;
+    return `Q${questionNum} (${difficulty}): ${q.score}/100 - "${q.question.substring(0, 60)}..."`;
   }).join('\n');
   
-  console.log('Questions for summary generation:', questions.map((q, idx) => ({
-    index: idx,
-    score: q.score,
-    questionId: q.questionId
-  })));
-
   const prompt = `You are an interview summary generator for a Full Stack React/Node.js technical interview. Return JSON only.
-
-IMPORTANT: The totalScore MUST be exactly ${manualTotalScore} (this is the pre-calculated average).
 
 INTERVIEW STRUCTURE (6 Questions Total):
 - Questions 1-2: EASY (Fundamentals, Basic concepts)
@@ -281,9 +256,8 @@ ${questionsText}
 
 Candidate: ${candidateName}
 Total Questions: ${questions.length}
-Pre-calculated Average Score: ${manualTotalScore}
 
-Provide a professional 3-4 sentence summary based on the performance.
+Calculate the AVERAGE score across ALL questions and provide a professional 3-4 sentence summary.
 
 SCORING INTERPRETATION:
 - 90-100: Exceptional technical knowledge
@@ -294,7 +268,7 @@ SCORING INTERPRETATION:
 
 Schema:
 {
-  "totalScore": ${manualTotalScore},
+  "totalScore": 78,
   "breakdown": [{"questionId":"q1","score":85}, {"questionId":"q2","score":80}, {"questionId":"q3","score":75}, {"questionId":"q4","score":82}, {"questionId":"q5","score":70}, {"questionId":"q6","score":76}],
   "summary": "Professional 3-4 sentence summary covering: overall performance, strengths, areas for improvement, and final recommendation"
 }
@@ -302,27 +276,9 @@ Schema:
 Example:
 {"totalScore":78,"breakdown":[{"questionId":"q1","score":85},{"questionId":"q2","score":80},{"questionId":"q3","score":75},{"questionId":"q4","score":82},{"questionId":"q5","score":70},{"questionId":"q6","score":76}],"summary":"The candidate demonstrated solid understanding of fundamental React and JavaScript concepts with good problem-solving approaches. Performance was strongest in basic and intermediate questions, showing clear conceptual knowledge. Some challenges with advanced topics suggest areas for continued learning. Overall, a promising candidate with a good foundation and potential for growth."}
 
-Return ONLY valid JSON with totalScore=${manualTotalScore} and all ${questions.length} questions in the breakdown array with their actual scores.`;
+Return ONLY valid JSON with all ${questions.length} questions in the breakdown array.`;
 
-  const result = await callGemini(prompt);
-  console.log('Gemini summary response:', result);
-  
-  // Double-check and override totalScore if AI returns incorrect value
-  if (!result.totalScore || result.totalScore === 0 || result.totalScore !== manualTotalScore) {
-    console.warn(`AI returned incorrect totalScore: ${result.totalScore}, using manual calculation: ${manualTotalScore}`);
-    result.totalScore = manualTotalScore;
-  }
-  
-  // Ensure breakdown has correct scores
-  if (result.breakdown && result.breakdown.length === questions.length) {
-    result.breakdown = questions.map((q, index) => ({
-      questionId: q.questionId || `q${index + 1}`,
-      score: q.score || 0
-    }));
-  }
-  
-  console.log('Final summary with corrected scores:', result);
-  return result;
+  return callGemini(prompt);
 }
 
 /**

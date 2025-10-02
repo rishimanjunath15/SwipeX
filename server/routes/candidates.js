@@ -54,7 +54,7 @@ router.get('/candidate/:id', async (req, res) => {
 
 /**
  * DELETE /api/candidate/:id
- * Deletes a candidate from the database
+ * Deletes a candidate and their interview data
  */
 router.delete('/candidate/:id', async (req, res) => {
   try {
@@ -69,7 +69,6 @@ router.delete('/candidate/:id', async (req, res) => {
     }
 
     res.json({
-      success: true,
       message: 'Candidate deleted successfully',
       deletedCandidate: {
         id: candidate._id,
