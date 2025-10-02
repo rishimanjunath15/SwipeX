@@ -358,11 +358,12 @@ export default function IntervieweePage() {
       setTimeout(() => {
         setIsAiTyping(false);
         addMessage('ai', `Score: ${evalData.score}/100\n\n${evalData.feedback}`, 'eval');
-        setIsProcessing(false);
         
         if (isLastQuestion) {
           // For the last question, just complete the interview
           // Don't generate another question
+          setIsProcessing(false);
+          
           setTimeout(() => {
             saveProgressToDatabase();
           }, 500);
@@ -378,11 +379,14 @@ export default function IntervieweePage() {
           
           // Generate next question FIRST (this adds it to the array)
           // THEN move to next question index
+          // Keep isProcessing true until the new question is ready
           setTimeout(async () => {
             await generateNextQuestion(nextQuestionNumber, nextDifficulty);
             // After question is generated and added to array, move to next index
             setTimeout(() => {
               dispatch(nextQuestion());
+              // Only set processing to false after index has moved
+              setIsProcessing(false);
             }, 500);
           }, 2000);
         }
@@ -601,7 +605,11 @@ export default function IntervieweePage() {
             <CandidateProfile profile={candidate} />
             <ChatWindow messages={messages} isAiTyping={isAiTyping} />
             
-            {interview.currentQuestionIndex < interview.questions.length && interview.currentQuestionIndex < 6 && !isProcessing && (
+            {interview.currentQuestionIndex < interview.questions.length && 
+             interview.currentQuestionIndex < 6 && 
+             !isProcessing && 
+             interview.questions[interview.currentQuestionIndex] &&
+             !interview.questions[interview.currentQuestionIndex].answer && (
               <QuestionCard
                 question={interview.questions[interview.currentQuestionIndex]}
                 questionNumber={interview.currentQuestionIndex + 1}
