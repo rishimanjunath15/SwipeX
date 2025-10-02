@@ -370,15 +370,18 @@ export default function IntervieweePage() {
             generateFinalSummary();
           }, 1500);
         } else {
-          // Move to next question
-          dispatch(nextQuestion());
-          
-          // Determine next difficulty
-          const nextQuestionNumber = interview.currentQuestionIndex + 2;
+          // Calculate next question number
+          const nextQuestionNumber = interview.currentQuestionIndex + 2; // +2 because: current (0-5) + 1 for next index + 1 for human numbering
           const nextDifficulty = nextQuestionNumber <= 2 ? 'easy' : nextQuestionNumber <= 4 ? 'medium' : 'hard';
           
-          setTimeout(() => {
-            generateNextQuestion(nextQuestionNumber, nextDifficulty);
+          // Generate next question FIRST (this adds it to the array)
+          // THEN move to next question index
+          setTimeout(async () => {
+            await generateNextQuestion(nextQuestionNumber, nextDifficulty);
+            // After question is generated and added to array, move to next index
+            setTimeout(() => {
+              dispatch(nextQuestion());
+            }, 500);
           }, 2000);
         }
       }, 1500);
