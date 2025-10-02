@@ -393,38 +393,6 @@ export default function IntervieweePage() {
     }
   }, [isProcessing, interview.questions, interview.currentQuestionIndex, dispatch, addMessage, generateNextQuestion, saveProgressToDatabase]);
 
-  // Generate final summary
-  const generateFinalSummary = useCallback(async () => {
-    try {
-      // Use the current interview state - this will always be the latest
-      const currentQuestions = interview.questions;
-      
-      console.log('Generating summary with questions:', currentQuestions.length);
-      console.log('Last question:', currentQuestions[currentQuestions.length - 1]);
-      
-      const response = await apiClient.post('/api/generate-summary', {
-        questions: currentQuestions,
-        candidateName: candidate.name,
-      });
-
-      const summaryData = response.data;
-      
-      dispatch(setFinalResults({
-        totalScore: summaryData.totalScore,
-        summary: summaryData.summary,
-        breakdown: summaryData.breakdown,
-      }));
-
-      // Save to database with the SAME questions we used for summary
-      await saveCandidateToDatabase(summaryData, currentQuestions);
-      
-      addMessage('ai', 'Interview completed! Here are your results.');
-    } catch (error) {
-      console.error('Error generating summary:', error);
-      dispatch(setError('Failed to generate final summary.'));
-    }
-  }, [interview.questions, candidate.name, dispatch, addMessage, saveCandidateToDatabase]);
-
   // Save candidate data to database
   const saveCandidateToDatabase = useCallback(async (summaryData, questionsToSave) => {
     try {
@@ -470,6 +438,38 @@ export default function IntervieweePage() {
       console.error('Error saving candidate:', error);
     }
   }, [candidate, interview.questions, interview.resumeText, messages]);
+
+  // Generate final summary
+  const generateFinalSummary = useCallback(async () => {
+    try {
+      // Use the current interview state - this will always be the latest
+      const currentQuestions = interview.questions;
+      
+      console.log('Generating summary with questions:', currentQuestions.length);
+      console.log('Last question:', currentQuestions[currentQuestions.length - 1]);
+      
+      const response = await apiClient.post('/api/generate-summary', {
+        questions: currentQuestions,
+        candidateName: candidate.name,
+      });
+
+      const summaryData = response.data;
+      
+      dispatch(setFinalResults({
+        totalScore: summaryData.totalScore,
+        summary: summaryData.summary,
+        breakdown: summaryData.breakdown,
+      }));
+
+      // Save to database with the SAME questions we used for summary
+      await saveCandidateToDatabase(summaryData, currentQuestions);
+      
+      addMessage('ai', 'Interview completed! Here are your results.');
+    } catch (error) {
+      console.error('Error generating summary:', error);
+      dispatch(setError('Failed to generate final summary.'));
+    }
+  }, [interview.questions, candidate.name, dispatch, addMessage, saveCandidateToDatabase]);
 
   // Handle start over
   const handleStartOver = () => {
