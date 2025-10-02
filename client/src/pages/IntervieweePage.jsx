@@ -347,12 +347,20 @@ export default function IntervieweePage() {
 
       const evalData = response.data;
       
+      console.log(`📊 Evaluation received for Q${questionNum}:`, {
+        questionId: currentQ.questionId,
+        score: evalData.score,
+        isLastQuestion
+      });
+      
       // Update question with score and feedback
       dispatch(updateQuestionEvaluation({
         questionId: currentQ.questionId,
         score: evalData.score,
         feedback: evalData.feedback,
       }));
+      
+      console.log(`✅ Score updated in Redux for Q${questionNum}`);
 
       // Show feedback with delay
       setTimeout(() => {
@@ -360,33 +368,42 @@ export default function IntervieweePage() {
         addMessage('ai', `Score: ${evalData.score}/100\n\n${evalData.feedback}`, 'eval');
         
         if (isLastQuestion) {
-          // For the last question, just complete the interview
-          // Don't generate another question
+          // For the 6th question: CRITICAL - ensure all data is synchronized
+          console.log('Last question answered. Current state:', {
+            currentIndex: interview.currentQuestionIndex,
+            totalQuestions: interview.questions.length,
+            lastQuestionScore: evalData.score,
+            allScores: interview.questions.map(q => q.score)
+          });
+          
+          // Wait a bit longer to ensure Redux state is fully updated
+          setTimeout(() => {
+            setIsProcessing(false);
+            saveProgressToDatabase();
+          }, 1000);
+          
+          // Generate final summary with longer delay to ensure all scores are saved
+          setTimeout(() => {
+            console.log('Generating final summary now...');
+            generateFinalSummary();
+          }, 3000);
+        } else {
+          // For questions 1-5: Generate next question
           setIsProcessing(false);
           
-          setTimeout(() => {
-            saveProgressToDatabase();
-          }, 500);
-          
-          // Generate final summary - wait longer to ensure Redux state is updated
-          setTimeout(() => {
-            generateFinalSummary();
-          }, 2000);
-        } else {
-          // Calculate next question number (for questions 1-5)
-          const nextQuestionNumber = interview.currentQuestionIndex + 2; // +2 because: current (0-4) + 1 for next index + 1 for human numbering
+          // Calculate next question number
+          const nextQuestionNumber = interview.currentQuestionIndex + 2;
           const nextDifficulty = nextQuestionNumber <= 2 ? 'easy' : nextQuestionNumber <= 4 ? 'medium' : 'hard';
+          
+          console.log(`Moving to question ${nextQuestionNumber} (${nextDifficulty})`);
           
           // Generate next question FIRST (this adds it to the array)
           // THEN move to next question index
-          // Keep isProcessing true until the new question is ready
           setTimeout(async () => {
             await generateNextQuestion(nextQuestionNumber, nextDifficulty);
             // After question is generated and added to array, move to next index
             setTimeout(() => {
               dispatch(nextQuestion());
-              // Only set processing to false after index has moved
-              setIsProcessing(false);
             }, 500);
           }, 2000);
         }
@@ -457,32 +474,44 @@ export default function IntervieweePage() {
   // Generate final summary
   const generateFinalSummary = useCallback(async () => {
     try {
-      // Use the current interview state - this will always be the latest
+      // CRITICAL: Get the absolute latest state from Redux
       const currentQuestions = interview.questions;
       
-      console.log('Generating summary with questions:', currentQuestions.length);
-      console.log('Questions data:', currentQuestions.map((q, idx) => ({
-        index: idx,
-        questionId: q.questionId,
-        score: q.score,
-        hasAnswer: !!q.answer
-      })));
+      console.log('=== GENERATING FINAL SUMMARY ===');
+      console.log('Total questions:', currentQuestions.length);
+      console.log('Detailed question data:');
+      currentQuestions.forEach((q, idx) => {
+        console.log(`  Q${idx + 1} (${q.questionId}):`, {
+          difficulty: q.difficulty,
+          hasQuestion: !!q.question,
+          hasAnswer: !!q.answer,
+          score: q.score,
+          hasFeedback: !!q.feedback
+        });
+      });
       
-      // Ensure we have all 6 questions with scores
+      // Ensure we have all 6 questions
       if (currentQuestions.length !== 6) {
-        console.error('Expected 6 questions, got:', currentQuestions.length);
+        console.error('❌ Expected 6 questions, got:', currentQuestions.length);
         dispatch(setError('Interview incomplete. Please restart.'));
         return;
       }
 
       // Check if all questions have scores
-      const questionsWithScores = currentQuestions.filter(q => q.score !== undefined && q.score !== null);
-      console.log('Questions with scores:', questionsWithScores.length);
+      const questionsWithScores = currentQuestions.filter(q => 
+        q.score !== undefined && 
+        q.score !== null && 
+        typeof q.score === 'number'
+      );
+      
+      console.log(`Questions with valid scores: ${questionsWithScores.length}/6`);
       
       if (questionsWithScores.length !== 6) {
-        console.error('Not all questions have scores. Questions with scores:', questionsWithScores.length);
-        // Try to regenerate missing scores
-        console.log('Attempting to regenerate summary anyway...');
+        console.error('❌ Not all questions have valid scores!');
+        console.error('Missing scores for questions:', currentQuestions
+          .map((q, idx) => ({ index: idx + 1, questionId: q.questionId, score: q.score }))
+          .filter(q => !q.score || typeof q.score !== 'number')
+        );
       }
       
       const response = await apiClient.post('/api/generate-summary', {
@@ -605,11 +634,7 @@ export default function IntervieweePage() {
             <CandidateProfile profile={candidate} />
             <ChatWindow messages={messages} isAiTyping={isAiTyping} />
             
-            {interview.currentQuestionIndex < interview.questions.length && 
-             interview.currentQuestionIndex < 6 && 
-             !isProcessing && 
-             interview.questions[interview.currentQuestionIndex] &&
-             !interview.questions[interview.currentQuestionIndex].answer && (
+            {interview.currentQuestionIndex < interview.questions.length && interview.currentQuestionIndex < 6 && !isProcessing && (
               <QuestionCard
                 question={interview.questions[interview.currentQuestionIndex]}
                 questionNumber={interview.currentQuestionIndex + 1}
