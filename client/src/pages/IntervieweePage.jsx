@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import ResumeUpload from '../components/ResumeUpload';
 import ChatWindow from '../components/ChatWindow';
 import QuestionCard from '../components/QuestionCard';
 import ResultSummary from '../components/ResultSummary';
 import WelcomeBackModal from '../components/WelcomeBackModal';
+import CandidateProfile from '../components/CandidateProfile';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import { Alert, AlertDescription } from '../components/ui/alert';
@@ -41,11 +42,13 @@ export default function IntervieweePage() {
   const interview = useSelector((state) => state.interview);
   const candidate = useSelector((state) => state.candidate.profile);
 
+  // State management
   const [messages, setMessages] = useState([]);
   const [fieldInput, setFieldInput] = useState('');
   const [processingField, setProcessingField] = useState(null);
   const [showWelcomeBack, setShowWelcomeBack] = useState(false);
-  const [submittingAnswer, setSubmittingAnswer] = useState(false);
+  const [isAiTyping, setIsAiTyping] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // Check for unfinished session on mount
   useEffect(() => {
@@ -57,49 +60,70 @@ export default function IntervieweePage() {
     }
   }, []);
 
-  // Add message to chat
-  const addMessage = (sender, text, type = null) => {
+  // Add message to chat with optional delay for AI typing effect
+  const addMessage = useCallback((sender, text, type = null, delay = 0) => {
     const timestamp = new Date().toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
     });
-    setMessages((prev) => [...prev, { sender, text, type, timestamp }]);
-  };
+    
+    if (sender === 'ai' && delay > 0) {
+      setIsAiTyping(true);
+      setTimeout(() => {
+        setMessages((prev) => [...prev, { sender, text, type, timestamp }]);
+        setIsAiTyping(false);
+      }, delay);
+    } else {
+      setMessages((prev) => [...prev, { sender, text, type, timestamp }]);
+    }
+  }, []);
 
   // Handle resume upload success
-  const handleUploadSuccess = async (data) => {
+  const handleUploadSuccess = useCallback(async (data) => {
     const { fields, missing, message, resumeText } = data;
 
     dispatch(setResumeText(resumeText));
     dispatch(setProfile(fields));
 
-    // Add AI message to chat
-    if (message) {
-      addMessage('ai', message);
-    } else {
-      addMessage('ai', 'Resume uploaded successfully!');
-    }
+    // Add AI message to chat with typing effect
+    setIsAiTyping(true);
+    setTimeout(() => {
+      setIsAiTyping(false);
+      if (message) {
+        addMessage('ai', message);
+      } else {
+        addMessage('ai', 'Resume uploaded successfully! I\'ve extracted your information.');
+      }
 
-    if (missing && missing.length > 0) {
-      dispatch(setMissingFields(missing));
-      dispatch(setStatus('collecting-fields'));
-      
-      // Ask for first missing field
-      const firstField = missing[0];
-      addMessage(
-        'ai',
-        `I couldn't find your ${firstField} in the resume. Could you please share it?`,
-        'ask_field'
-      );
-      setProcessingField(firstField);
-    } else {
-      // All fields present, start interview
-      startInterviewProcess();
-    }
-  };
+      if (missing && missing.length > 0) {
+        dispatch(setMissingFields(missing));
+        dispatch(setStatus('collecting-fields'));
+        
+        // Ask for first missing field
+        const firstField = missing[0];
+        setTimeout(() => {
+          setIsAiTyping(true);
+          setTimeout(() => {
+            setIsAiTyping(false);
+            addMessage(
+              'ai',
+              `I couldn't find your ${firstField} in the resume. Could you please share it?`,
+              'ask_field'
+            );
+            setProcessingField(firstField);
+          }, 800);
+        }, 500);
+      } else {
+        // All fields present, start interview
+        setTimeout(() => {
+          startInterviewProcess();
+        }, 1000);
+      }
+    }, 1000);
+  }, [dispatch, addMessage]);
 
   // Handle missing field submission
-  const handleFieldSubmit = () => {
+  const handleFieldSubmit = useCallback(() => {
     if (!fieldInput.trim() || !processingField) return;
 
     const value = fieldInput.trim();
@@ -107,29 +131,42 @@ export default function IntervieweePage() {
     dispatch(removeFieldFromMissing(processingField));
 
     addMessage('user', value);
-    addMessage('ai', `Thank you for providing your ${processingField}.`);
+    
+    setIsAiTyping(true);
+    setTimeout(() => {
+      setIsAiTyping(false);
+      addMessage('ai', `Thank you for providing your ${processingField}.`);
 
-    setFieldInput('');
+      setFieldInput('');
 
-    // Check if more fields are missing
-    const remainingFields = interview.missingFields.filter(
-      (f) => f !== processingField
-    );
-
-    if (remainingFields.length > 0) {
-      const nextField = remainingFields[0];
-      setProcessingField(nextField);
-      addMessage(
-        'ai',
-        `Could you also provide your ${nextField}?`,
-        'ask_field'
+      // Check if more fields are missing
+      const remainingFields = interview.missingFields.filter(
+        (f) => f !== processingField
       );
-    } else {
-      // All fields collected, start interview
-      setProcessingField(null);
-      startInterviewProcess();
-    }
-  };
+
+      if (remainingFields.length > 0) {
+        const nextField = remainingFields[0];
+        setProcessingField(nextField);
+        setTimeout(() => {
+          setIsAiTyping(true);
+          setTimeout(() => {
+            setIsAiTyping(false);
+            addMessage(
+              'ai',
+              `Could you also provide your ${nextField}?`,
+              'ask_field'
+            );
+          }, 800);
+        }, 500);
+      } else {
+        // All fields collected, start interview
+        setProcessingField(null);
+        setTimeout(() => {
+          startInterviewProcess();
+        }, 1000);
+      }
+    }, 800);
+  }, [fieldInput, processingField, dispatch, interview.missingFields, addMessage]);
 
   // Start the interview process
   const startInterviewProcess = () => {
@@ -141,7 +178,10 @@ export default function IntervieweePage() {
   };
 
   // Generate next question
-  const generateNextQuestion = async (questionNumber, difficulty) => {
+  const generateNextQuestion = useCallback(async (questionNumber, difficulty) => {
+    setIsAiTyping(true);
+    setIsProcessing(true);
+    
     try {
       const response = await apiClient.post('/api/interview-action', {
         action: 'next_question',
@@ -155,18 +195,25 @@ export default function IntervieweePage() {
       const questionData = response.data;
       dispatch(addQuestion(questionData));
       
-      addMessage('ai', questionData.question, 'question');
+      // Add delay to show AI is "thinking"
+      setTimeout(() => {
+        setIsAiTyping(false);
+        addMessage('ai', questionData.question, 'question');
+        setIsProcessing(false);
+      }, 1000);
     } catch (error) {
       console.error('Error generating question:', error);
+      setIsAiTyping(false);
+      setIsProcessing(false);
       dispatch(setError('Failed to generate question. Please try again.'));
     }
-  };
+  }, [interview.resumeText, dispatch, addMessage]);
 
   // Handle answer submission
-  const handleAnswerSubmit = async (answer) => {
-    if (submittingAnswer) return;
+  const handleAnswerSubmit = useCallback(async (answer) => {
+    if (isProcessing) return;
 
-    setSubmittingAnswer(true);
+    setIsProcessing(true);
     const currentQ = interview.questions[interview.currentQuestionIndex];
 
     // Save answer locally
@@ -177,6 +224,7 @@ export default function IntervieweePage() {
     }));
 
     addMessage('user', answer || '(No answer provided)');
+    setIsAiTyping(true);
 
     try {
       // Submit to server for evaluation
@@ -202,33 +250,36 @@ export default function IntervieweePage() {
         feedback: evalData.feedback,
       }));
 
-      // Show feedback
-      addMessage('ai', `Score: ${evalData.score}/100\n\n${evalData.feedback}`, 'eval');
-
-      if (isLastQuestion) {
-        // Generate final summary
-        setTimeout(() => {
-          generateFinalSummary();
-        }, 1000);
-      } else {
-        // Move to next question
-        dispatch(nextQuestion());
+      // Show feedback with delay
+      setTimeout(() => {
+        setIsAiTyping(false);
+        addMessage('ai', `Score: ${evalData.score}/100\n\n${evalData.feedback}`, 'eval');
         
-        // Determine next difficulty
-        const nextQuestionNumber = interview.currentQuestionIndex + 2;
-        const nextDifficulty = nextQuestionNumber <= 2 ? 'easy' : nextQuestionNumber <= 4 ? 'medium' : 'hard';
-        
-        setTimeout(() => {
-          generateNextQuestion(nextQuestionNumber, nextDifficulty);
-        }, 2000);
-      }
+        if (isLastQuestion) {
+          // Generate final summary
+          setTimeout(() => {
+            generateFinalSummary();
+          }, 1500);
+        } else {
+          // Move to next question
+          dispatch(nextQuestion());
+          
+          // Determine next difficulty
+          const nextQuestionNumber = interview.currentQuestionIndex + 2;
+          const nextDifficulty = nextQuestionNumber <= 2 ? 'easy' : nextQuestionNumber <= 4 ? 'medium' : 'hard';
+          
+          setTimeout(() => {
+            generateNextQuestion(nextQuestionNumber, nextDifficulty);
+          }, 2000);
+        }
+      }, 1500);
     } catch (error) {
       console.error('Error evaluating answer:', error);
+      setIsAiTyping(false);
+      setIsProcessing(false);
       dispatch(setError('Failed to evaluate answer. Please try again.'));
-    } finally {
-      setSubmittingAnswer(false);
     }
-  };
+  }, [isProcessing, interview.questions, interview.currentQuestionIndex, dispatch, addMessage, generateNextQuestion]);
 
   // Generate final summary
   const generateFinalSummary = async () => {
@@ -312,7 +363,8 @@ export default function IntervieweePage() {
         {/* Collecting Fields State */}
         {interview.status === 'collecting-fields' && processingField && (
           <div className="space-y-6">
-            <ChatWindow messages={messages} />
+            <CandidateProfile profile={candidate} />
+            <ChatWindow messages={messages} isAiTyping={isAiTyping} />
             <div className="max-w-2xl mx-auto">
               <div className="flex space-x-2">
                 <Input
@@ -320,8 +372,11 @@ export default function IntervieweePage() {
                   onChange={(e) => setFieldInput(e.target.value)}
                   placeholder={`Enter your ${processingField}...`}
                   onKeyPress={(e) => e.key === 'Enter' && handleFieldSubmit()}
+                  disabled={isAiTyping}
                 />
-                <Button onClick={handleFieldSubmit}>Submit</Button>
+                <Button onClick={handleFieldSubmit} disabled={isAiTyping}>
+                  Submit
+                </Button>
               </div>
             </div>
           </div>
@@ -330,16 +385,17 @@ export default function IntervieweePage() {
         {/* Interviewing State */}
         {interview.status === 'interviewing' && interview.questions.length > 0 && (
           <div className="space-y-6">
-            <ChatWindow messages={messages} />
+            <CandidateProfile profile={candidate} />
+            <ChatWindow messages={messages} isAiTyping={isAiTyping} />
             
-            {interview.currentQuestionIndex < interview.questions.length && (
+            {interview.currentQuestionIndex < interview.questions.length && !isProcessing && (
               <QuestionCard
                 question={interview.questions[interview.currentQuestionIndex]}
                 questionNumber={interview.currentQuestionIndex + 1}
                 totalQuestions={6}
                 timeLimit={interview.questions[interview.currentQuestionIndex].timeLimit}
                 onSubmit={handleAnswerSubmit}
-                disabled={submittingAnswer}
+                disabled={isProcessing}
               />
             )}
           </div>

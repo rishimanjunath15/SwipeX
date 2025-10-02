@@ -6,13 +6,13 @@ import { Card } from './ui/card';
  * ChatWindow Component
  * Displays conversation between AI and candidate
  */
-export default function ChatWindow({ messages }) {
+export default function ChatWindow({ messages, isAiTyping = false }) {
   const messagesEndRef = useRef(null);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, isAiTyping]);
 
   return (
     <Card className="w-full max-w-4xl mx-auto">
@@ -84,6 +84,28 @@ export default function ChatWindow({ messages }) {
               </div>
             ))
           )}
+          
+          {/* AI Typing Indicator */}
+          {isAiTyping && (
+            <div className="flex justify-start">
+              <div className="flex items-start space-x-2 max-w-[80%]">
+                {/* Avatar */}
+                <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-gray-200 text-gray-700">
+                  <Bot size={18} />
+                </div>
+
+                {/* Typing Animation */}
+                <div className="rounded-lg px-4 py-3 bg-gray-100">
+                  <div className="flex space-x-1">
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
           <div ref={messagesEndRef} />
         </div>
       </div>

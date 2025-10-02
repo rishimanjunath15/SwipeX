@@ -10,6 +10,10 @@ const initialState = {
     name: '',
     email: '',
     phone: '',
+    designation: '',
+    location: '',
+    github: '',
+    linkedin: '',
   },
   
   // List of saved candidates (for interviewer view)
@@ -44,6 +48,10 @@ const candidateSlice = createSlice({
         name: '',
         email: '',
         phone: '',
+        designation: '',
+        location: '',
+        github: '',
+        linkedin: '',
       };
     },
     

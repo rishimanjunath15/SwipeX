@@ -62,15 +62,27 @@ Schema:
   "fields": {
     "name": "Full Name or empty string",
     "email": "email@example.com or empty string",
-    "phone": "phone-number or empty string"
+    "phone": "phone-number or empty string",
+    "designation": "Job title/role (e.g., Software Engineer, Data Scientist) or empty string",
+    "location": "City, State or Country or empty string",
+    "github": "GitHub profile URL or username or empty string",
+    "linkedin": "LinkedIn profile URL or empty string"
   },
-  "missing": ["phone","email"] OR [],
+  "missing": ["phone","location"] OR [],
   "message": "A short conversational message to show to candidate (optional)"
 }
 
+Instructions:
+- Extract name, email, phone, job title/designation, location (city/state/country)
+- Look for GitHub URL or username in any format (github.com/username, @username, etc.)
+- Look for LinkedIn URL or profile link
+- Only include fields in "missing" array if they're truly important and not found
+- For missing fields, prioritize: name, email, phone, designation
+- GitHub and LinkedIn are optional, don't mark as missing unless no professional links found
+
 Example:
-Resume: "John Doe\nSoftware Engineer\njohn@example.com"
-Output: {"fields":{"name":"John Doe","email":"john@example.com","phone":""},"missing":["phone"],"message":"I found your name and email. Could you please provide your phone number?"}
+Resume: "John Doe\nSenior Software Engineer\nSan Francisco, CA\njohn@example.com\n+1-555-0100\ngithub.com/johndoe\nlinkedin.com/in/johndoe"
+Output: {"fields":{"name":"John Doe","email":"john@example.com","phone":"+1-555-0100","designation":"Senior Software Engineer","location":"San Francisco, CA","github":"github.com/johndoe","linkedin":"linkedin.com/in/johndoe"},"missing":[],"message":"Great! I've extracted all your information from the resume."}
 
 Now extract from this resume:
 ${resumeText}
