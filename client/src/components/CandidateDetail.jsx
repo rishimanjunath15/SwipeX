@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { ArrowLeft, User, Mail, Phone, Award, Calendar, MessageSquare, Trash2 } from 'lucide-react';
@@ -69,6 +69,47 @@ export default function CandidateDetail({ candidateId, onBack }) {
     if (score >= 60) return 'text-yellow-600';
     return 'text-red-600';
   };
+
+  const overallScore = useMemo(() => {
+    if (!candidate) return 0;
+    if (candidate.totalScore && candidate.totalScore > 0) {
+      return Math.round(candidate.totalScore);
+    }
+
+    if (!candidate.questions || candidate.questions.length === 0) {
+      return candidate.totalScore || 0;
+    }
+
+    const scored = candidate.questions.filter((q) => typeof q.score === 'number');
+    if (scored.length === 0) {
+      return candidate.totalScore || 0;
+    }
+
+    const total = scored.reduce((sum, q) => sum + (q.score || 0), 0);
+    return Math.round(total / scored.length);
+  }, [candidate]);
+
+  useEffect(() => {
+    if (!candidate || !candidate._id) return;
+    if (!overallScore || overallScore <= 0) return;
+    if (candidate.totalScore === overallScore) return;
+
+    const updatePersistedScore = async () => {
+      try {
+        await apiClient.put(`/api/update-candidate/${candidate._id}`, {
+          totalScore: overallScore,
+        });
+
+        setCandidate((prev) =>
+          prev ? { ...prev, totalScore: overallScore } : prev
+        );
+      } catch (err) {
+        console.error('Failed to sync total score:', err);
+      }
+    };
+
+    updatePersistedScore();
+  }, [candidate, overallScore]);
 
   if (loading) {
     return (
@@ -170,8 +211,8 @@ export default function CandidateDetail({ candidateId, onBack }) {
               <Award size={24} className="text-primary" />
               <div>
                 <p className="text-sm text-gray-500">Total Score</p>
-                <p className={`text-3xl font-bold ${getScoreColor(candidate.totalScore)}`}>
-                  {candidate.totalScore}/100
+                <p className={`text-3xl font-bold ${getScoreColor(overallScore)}`}>
+                  {overallScore}/100
                 </p>
               </div>
             </div>
