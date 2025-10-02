@@ -23,7 +23,7 @@ function App() {
       </main>
 
       <footer className="border-t bg-white py-6 text-center text-sm text-gray-600">
-        <p>Swipe Interview Assistant © 2025 • Powered by Gemini AI</p>
+        <p>SwipeX Interview Assistant © 2025 • Powered by Gemini AI</p>
       </footer>
     </div>
   );

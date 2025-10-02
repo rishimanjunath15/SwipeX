@@ -147,7 +147,7 @@ app.get('/api/health', async (req, res) => {
 // Root endpoint
 app.get('/', (req, res) => {
   res.json({
-    message: 'Swipe Interview Assistant API',
+    message: 'SwipeX Interview Assistant API',
     endpoints: {
       health: '/api/health',
       uploadResume: '/api/upload-resume',
@@ -170,7 +170,7 @@ app.use((err, req, res, next) => {
 if (process.env.NODE_ENV !== 'production') {
   async function startServer() {
     console.log('═'.repeat(60));
-    console.log('  🚀 Starting Swipe Interview Assistant Server');
+    console.log('  🚀 Starting SwipeX Interview Assistant Server');
     console.log('═'.repeat(60));
     
     // Test Gemini API first

@@ -181,24 +181,6 @@ export default function IntervieweePage() {
     }, 800);
   }, [fieldInput, processingField, dispatch, interview.missingFields, addMessage]);
 
-  // Start the interview process
-  const startInterviewProcess = useCallback(() => {
-    setReadyToBegin(false);
-    setIsAiTyping(true);
-    
-    dispatch(startInterview({ sessionId: Date.now().toString() }));
-    
-    setTimeout(() => {
-      setIsAiTyping(false);
-      addMessage('ai', "Great! Let's begin the interview. You'll be asked 6 questions of varying difficulty. Good luck!");
-      
-      // Generate first question
-      setTimeout(() => {
-        generateNextQuestion(1, 'easy');
-      }, 1000);
-    }, 800);
-  }, [dispatch, addMessage, generateNextQuestion]);
-
   // Generate next question
   const generateNextQuestion = useCallback(async (questionNumber, difficulty) => {
     setIsAiTyping(true);
@@ -230,6 +212,24 @@ export default function IntervieweePage() {
       dispatch(setError('Failed to generate question. Please try again.'));
     }
   }, [interview.resumeText, dispatch, addMessage]);
+
+  // Start the interview process
+  const startInterviewProcess = useCallback(() => {
+    setReadyToBegin(false);
+    setIsAiTyping(true);
+    
+    dispatch(startInterview({ sessionId: Date.now().toString() }));
+    
+    setTimeout(() => {
+      setIsAiTyping(false);
+      addMessage('ai', "Great! Let's begin the interview. You'll be asked 6 questions of varying difficulty. Good luck!");
+      
+      // Generate first question
+      setTimeout(() => {
+        generateNextQuestion(1, 'easy');
+      }, 1000);
+    }, 800);
+  }, [dispatch, addMessage, generateNextQuestion]);
 
   // Handle answer submission
   const handleAnswerSubmit = useCallback(async (answer) => {

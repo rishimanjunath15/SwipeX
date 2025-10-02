@@ -16,7 +16,7 @@ export default function AppHeader({ activeTab, onTabChange }) {
               <span className="text-white font-bold text-lg">S</span>
             </div>
             <h1 className="text-xl font-bold text-gray-900">
-              Swipe Interview Assistant
+              SwipeX Interview Assistant
             </h1>
           </div>
 
