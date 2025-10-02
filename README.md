@@ -11,7 +11,7 @@
 
 *Transform the hiring process with AI-powered technical interviews*
 
-[🌐 Live Demo](https://swipe-x-three.vercel.app) • [📖 Documentation](#-documentation) • [🚀 Quick Deploy](#-quick-deploy)
+[🌐 Live Demo](swipex-alpha.vercel.app/) • [📖 Documentation](#-documentation) • [🚀 Quick Deploy](#-quick-deploy)
 
 </div>
 
