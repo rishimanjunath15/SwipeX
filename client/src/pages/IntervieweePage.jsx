@@ -147,6 +147,14 @@ export default function IntervieweePage() {
     }
   }, [candidate.email, interview.status]);
 
+  const calculateOverallScore = useCallback((questions) => {
+    if (!questions || questions.length === 0) return 0;
+    const scoredQuestions = questions.filter((q) => typeof q.score === 'number');
+    if (scoredQuestions.length === 0) return 0;
+    const total = scoredQuestions.reduce((sum, q) => sum + (q.score || 0), 0);
+    return Math.round(total / scoredQuestions.length);
+  }, []);
+
   // Handle resume upload success
   const handleUploadSuccess = useCallback(async (data) => {
     const { fields, missing, message, resumeText } = data;
@@ -435,15 +443,26 @@ export default function IntervieweePage() {
       });
 
       const summaryData = response.data;
+      const overallScore = calculateOverallScore(questionsForSummary);
+      const breakdownFromSummary = Array.isArray(summaryData.breakdown) && summaryData.breakdown.length > 0
+        ? summaryData.breakdown
+        : questionsForSummary.map((q) => ({
+            questionId: q.questionId,
+            score: q.score || 0,
+          }));
       
       dispatch(setFinalResults({
-        totalScore: summaryData.totalScore,
+        totalScore: overallScore,
         summary: summaryData.summary,
-        breakdown: summaryData.breakdown,
+        breakdown: breakdownFromSummary,
       }));
 
       // Save to database
-      await saveCandidateToDatabase(summaryData, questionsForSummary);
+      await saveCandidateToDatabase({
+        ...summaryData,
+        totalScore: overallScore,
+        breakdown: breakdownFromSummary,
+      }, questionsForSummary);
       
       addMessage('ai', 'Interview completed! Here are your results.');
     } catch (error) {
@@ -473,7 +492,7 @@ export default function IntervieweePage() {
         linkedin: candidate.linkedin,
         resumeText: interview.resumeText,
         questions: questionsWithNumbers,
-        totalScore: summaryData.totalScore,
+  totalScore: summaryData.totalScore,
         summary: summaryData.summary,
         preInterviewChat: messages.filter(m => m.type !== 'question' && m.type !== 'eval'),
       });
