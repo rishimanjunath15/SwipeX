@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import ResumeUpload from '../components/ResumeUpload';
 import ChatWindow from '../components/ChatWindow';
@@ -65,6 +65,9 @@ export default function IntervieweePage() {
   const [isAiTyping, setIsAiTyping] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [readyToBegin, setReadyToBegin] = useState(false);
+
+  // Refs to prevent duplicate operations
+  const isGeneratingQuestion = useRef(false);
 
   // Check for unfinished session on mount
   useEffect(() => {
@@ -248,10 +251,33 @@ export default function IntervieweePage() {
 
   // Generate next question
   const generateNextQuestion = useCallback(async (questionNumber, difficulty) => {
+    // CRITICAL: Prevent generating more than 6 questions
+    if (questionNumber > 6) {
+      console.error('❌ Attempted to generate question beyond limit:', questionNumber);
+      return;
+    }
+    
+    // CRITICAL: Check if this question already exists
+    const questionId = `q${questionNumber}`;
+    const existingQuestion = interview.questions.find(q => q.questionId === questionId);
+    if (existingQuestion) {
+      console.error('❌ Question already exists:', questionId);
+      return;
+    }
+    
+    // CRITICAL: Prevent concurrent question generation
+    if (isGeneratingQuestion.current) {
+      console.error('❌ Already generating a question, skipping duplicate call');
+      return;
+    }
+    
+    isGeneratingQuestion.current = true;
     setIsAiTyping(true);
     setIsProcessing(true);
     
     try {
+      console.log(`🔄 Generating question ${questionNumber} (${difficulty})...`);
+      
       // Get previous questions to avoid topic repetition
       const previousQuestions = interview.questions.map(q => q.question).join('\n');
       
@@ -268,7 +294,9 @@ export default function IntervieweePage() {
       const questionData = response.data;
       
       // Ensure questionId matches the sequential number
-      questionData.questionId = `q${questionNumber}`;
+      questionData.questionId = questionId;
+      
+      console.log(`✅ Generated question ${questionNumber}:`, questionData.questionId);
       
       // Add question to Redux store
       dispatch(addQuestion(questionData));
@@ -279,11 +307,13 @@ export default function IntervieweePage() {
         // Don't add question to chat - it's displayed in QuestionCard component
         // addMessage('ai', questionData.question, 'question');
         setIsProcessing(false);
+        isGeneratingQuestion.current = false; // Reset flag
       }, 1000);
     } catch (error) {
       console.error('Error generating question:', error);
       setIsAiTyping(false);
       setIsProcessing(false);
+      isGeneratingQuestion.current = false; // Reset flag on error
       dispatch(setError('Failed to generate question. Please try again.'));
     }
   }, [interview.resumeText, interview.questions, dispatch, addMessage]);
