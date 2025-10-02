@@ -34,16 +34,19 @@ import {
 } from '../redux/candidateSlice';
 
 /**
- * INTERVIEW QUESTION SEQUENCE (Consistent across all views)
- * =========================================================
- * Question 1: EASY - Fundamentals
- * Question 2: EASY - Basic concepts
- * Question 3: MEDIUM - Intermediate topics
- * Question 4: MEDIUM - Common patterns
- * Question 5: HARD - Advanced concepts
- * Question 6: HARD - Complex scenarios
+ * INTERVIEW QUESTION SEQUENCE (STRICT - Exactly 6 Questions)
+ * ===========================================================
+ * Question 1: EASY - Fundamentals (questionNumber: 1, index: 0)
+ * Question 2: EASY - Basic concepts (questionNumber: 2, index: 1)
+ * Question 3: MEDIUM - Intermediate topics (questionNumber: 3, index: 2)
+ * Question 4: MEDIUM - Common patterns (questionNumber: 4, index: 3)
+ * Question 5: HARD - Advanced concepts (questionNumber: 5, index: 4)
+ * Question 6: HARD - Complex scenarios (questionNumber: 6, index: 5)
  * 
- * Total: 6 questions
+ * TOTAL: EXACTLY 6 questions (no more, no less)
+ * DISTRIBUTION: 2 Easy + 2 Medium + 2 Hard
+ * INDEXING: questionNumber (1-6) for display, index (0-5) for array
+ * DATABASE: All questions saved with questionNumber field
  * Focus: Theory-based with simple code examples only
  * Evaluation: Logic and understanding over syntax
  */
@@ -267,8 +270,9 @@ export default function IntervieweePage() {
 
       const questionData = response.data;
       
-      // Ensure questionId matches the sequential number
+      // Ensure questionId and questionNumber are properly set
       questionData.questionId = `q${questionNumber}`;
+      questionData.questionNumber = questionNumber; // Explicit sequential number (1-6)
       
       // Add question to Redux store
       dispatch(addQuestion(questionData));
@@ -332,7 +336,8 @@ export default function IntervieweePage() {
 
     try {
       // Submit to server for evaluation
-      const isLastQuestion = interview.currentQuestionIndex === 5;
+      // STRICT: Interview ends after exactly 6 questions
+      const isLastQuestion = interview.currentQuestionIndex === 5 || interview.questions.length >= 6;
       
       const response = await apiClient.post('/api/interview-action', {
         action: 'submit_answer',
@@ -372,7 +377,20 @@ export default function IntervieweePage() {
         } else {
           // Calculate next question number
           const nextQuestionNumber = interview.currentQuestionIndex + 2; // +2 because: current (0-5) + 1 for next index + 1 for human numbering
-          const nextDifficulty = nextQuestionNumber <= 2 ? 'easy' : nextQuestionNumber <= 4 ? 'medium' : 'hard';
+          
+          // STRICT DIFFICULTY DISTRIBUTION: 2 easy, 2 medium, 2 hard
+          let nextDifficulty;
+          if (nextQuestionNumber <= 2) {
+            nextDifficulty = 'easy'; // Questions 1-2: EASY
+          } else if (nextQuestionNumber <= 4) {
+            nextDifficulty = 'medium'; // Questions 3-4: MEDIUM
+          } else if (nextQuestionNumber <= 6) {
+            nextDifficulty = 'hard'; // Questions 5-6: HARD
+          } else {
+            // Safety check: Should never reach here
+            console.error('Attempted to generate more than 6 questions');
+            return;
+          }
           
           // Generate next question FIRST (this adds it to the array)
           // THEN move to next question index

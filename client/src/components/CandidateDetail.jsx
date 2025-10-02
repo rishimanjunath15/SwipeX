@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
-import { ArrowLeft, User, Mail, Phone, Award, Calendar, MessageSquare } from 'lucide-react';
+import { ArrowLeft, User, Mail, Phone, Award, Calendar, MessageSquare, Trash2 } from 'lucide-react';
 import apiClient from '../lib/api';
 
 /**
@@ -12,6 +12,7 @@ export default function CandidateDetail({ candidateId, onBack }) {
   const [candidate, setCandidate] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (candidateId) {
@@ -30,6 +31,24 @@ export default function CandidateDetail({ candidateId, onBack }) {
       setError('Failed to load candidate details');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm(`Are you sure you want to delete ${candidate.name}'s interview? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      setDeleting(true);
+      await apiClient.delete(`/api/candidate/${candidateId}`);
+      
+      alert('Candidate deleted successfully');
+      onBack(); // Go back to list
+    } catch (err) {
+      console.error('Error deleting candidate:', err);
+      alert('Failed to delete candidate. Please try again.');
+      setDeleting(false);
     }
   };
 
@@ -81,11 +100,23 @@ export default function CandidateDetail({ candidateId, onBack }) {
 
   return (
     <div className="space-y-6 w-full">
-      {/* Back Button */}
-      <Button onClick={onBack} variant="outline">
-        <ArrowLeft size={16} className="mr-2" />
-        Back to List
-      </Button>
+      {/* Back and Delete Buttons */}
+      <div className="flex justify-between items-center">
+        <Button onClick={onBack} variant="outline">
+          <ArrowLeft size={16} className="mr-2" />
+          Back to List
+        </Button>
+        
+        <Button
+          onClick={handleDelete}
+          variant="destructive"
+          disabled={deleting}
+          className="flex items-center gap-2"
+        >
+          <Trash2 className="w-4 h-4" />
+          {deleting ? 'Deleting...' : 'Delete Candidate'}
+        </Button>
+      </div>
 
       {/* Candidate Profile Card */}
       <Card>

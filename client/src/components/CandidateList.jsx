@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
-import { Eye, Mail, Phone, Calendar, Award } from 'lucide-react';
+import { Eye, Mail, Phone, Calendar, Award, Trash2 } from 'lucide-react';
 import apiClient from '../lib/api';
 
 /**
@@ -12,6 +12,7 @@ export default function CandidateList({ onSelectCandidate }) {
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
   useEffect(() => {
     fetchCandidates();
@@ -28,6 +29,28 @@ export default function CandidateList({ onSelectCandidate }) {
       setError('Failed to load candidates');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDelete = async (candidateId, candidateName) => {
+    if (!window.confirm(`Are you sure you want to delete ${candidateName}'s interview? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      setDeletingId(candidateId);
+      await apiClient.delete(`/api/candidate/${candidateId}`);
+      
+      // Remove from local state
+      setCandidates(candidates.filter(c => c._id !== candidateId));
+      
+      // Show success message
+      alert('Candidate deleted successfully');
+    } catch (err) {
+      console.error('Error deleting candidate:', err);
+      alert('Failed to delete candidate. Please try again.');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -143,14 +166,25 @@ export default function CandidateList({ onSelectCandidate }) {
                       </div>
                     </td>
                     <td className="py-3 px-4">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => onSelectCandidate(candidate._id)}
-                      >
-                        <Eye size={16} className="mr-1" />
-                        View Details
-                      </Button>
+                      <div className="flex items-center space-x-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => onSelectCandidate(candidate._id)}
+                        >
+                          <Eye size={16} className="mr-1" />
+                          View
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => handleDelete(candidate._id, candidate.name)}
+                          disabled={deletingId === candidate._id}
+                        >
+                          <Trash2 size={16} className="mr-1" />
+                          {deletingId === candidate._id ? 'Deleting...' : 'Delete'}
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
