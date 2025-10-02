@@ -49,6 +49,7 @@ export default function IntervieweePage() {
   const [showWelcomeBack, setShowWelcomeBack] = useState(false);
   const [isAiTyping, setIsAiTyping] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [readyToBegin, setReadyToBegin] = useState(false);
 
   // Check for unfinished session on mount
   useEffect(() => {
@@ -114,9 +115,15 @@ export default function IntervieweePage() {
           }, 800);
         }, 500);
       } else {
-        // All fields present, start interview
+        // All fields present, wait for user to click "Let's Begin"
         setTimeout(() => {
-          startInterviewProcess();
+          setIsAiTyping(true);
+          setTimeout(() => {
+            setIsAiTyping(false);
+            addMessage('ai', 'Perfect! I have all the information I need. When you\'re ready, click "Let\'s Begin" to start the interview.');
+            dispatch(setStatus('ready'));
+            setReadyToBegin(true);
+          }, 800);
         }, 1000);
       }
     }, 1000);
@@ -153,29 +160,44 @@ export default function IntervieweePage() {
             setIsAiTyping(false);
             addMessage(
               'ai',
-              `Could you also provide your ${nextField}?`,
+              `Could you also share your ${nextField}?`,
               'ask_field'
             );
           }, 800);
         }, 500);
       } else {
-        // All fields collected, start interview
+        // All fields collected, wait for user to click "Let's Begin"
         setProcessingField(null);
         setTimeout(() => {
-          startInterviewProcess();
-        }, 1000);
+          setIsAiTyping(true);
+          setTimeout(() => {
+            setIsAiTyping(false);
+            addMessage('ai', 'Perfect! I have all the information I need. When you\'re ready, click "Let\'s Begin" to start the interview.');
+            dispatch(setStatus('ready'));
+            setReadyToBegin(true);
+          }, 800);
+        }, 500);
       }
     }, 800);
   }, [fieldInput, processingField, dispatch, interview.missingFields, addMessage]);
 
   // Start the interview process
-  const startInterviewProcess = () => {
-    dispatch(startInterview({ sessionId: Date.now().toString() }));
-    addMessage('ai', "Great! Let's begin the interview. You'll be asked 6 questions of varying difficulty. Good luck!");
+  const startInterviewProcess = useCallback(() => {
+    setReadyToBegin(false);
+    setIsAiTyping(true);
     
-    // Generate first question
-    generateNextQuestion(1, 'easy');
-  };
+    dispatch(startInterview({ sessionId: Date.now().toString() }));
+    
+    setTimeout(() => {
+      setIsAiTyping(false);
+      addMessage('ai', "Great! Let's begin the interview. You'll be asked 6 questions of varying difficulty. Good luck!");
+      
+      // Generate first question
+      setTimeout(() => {
+        generateNextQuestion(1, 'easy');
+      }, 1000);
+    }, 800);
+  }, [dispatch, addMessage, generateNextQuestion]);
 
   // Generate next question
   const generateNextQuestion = useCallback(async (questionNumber, difficulty) => {
@@ -314,6 +336,10 @@ export default function IntervieweePage() {
         name: candidate.name,
         email: candidate.email,
         phone: candidate.phone,
+        designation: candidate.designation,
+        location: candidate.location,
+        github: candidate.github,
+        linkedin: candidate.linkedin,
         resumeText: interview.resumeText,
         questions: interview.questions,
         totalScore: summaryData.totalScore,
@@ -378,6 +404,24 @@ export default function IntervieweePage() {
                   Submit
                 </Button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Ready to Begin State */}
+        {interview.status === 'ready' && readyToBegin && (
+          <div className="space-y-6">
+            <CandidateProfile profile={candidate} />
+            <ChatWindow messages={messages} isAiTyping={isAiTyping} />
+            <div className="max-w-2xl mx-auto flex justify-center">
+              <Button 
+                onClick={startInterviewProcess}
+                disabled={isAiTyping}
+                size="lg"
+                className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-6 text-lg font-semibold"
+              >
+                Let's Begin
+              </Button>
             </div>
           </div>
         )}

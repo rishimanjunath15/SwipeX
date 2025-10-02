@@ -18,6 +18,22 @@ const candidateSchema = new mongoose.Schema({
     type: String,
     default: '',
   },
+  designation: {
+    type: String,
+    default: '',
+  },
+  location: {
+    type: String,
+    default: '',
+  },
+  github: {
+    type: String,
+    default: '',
+  },
+  linkedin: {
+    type: String,
+    default: '',
+  },
   
   // Resume text (full extracted text)
   resumeText: {
