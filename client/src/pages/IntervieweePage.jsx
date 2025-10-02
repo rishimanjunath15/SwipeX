@@ -95,7 +95,7 @@ export default function IntervieweePage() {
   }, [candidate.email]);
 
   // Save interview progress to database
-  const saveProgressToDatabase = useCallback(async () => {
+  const saveProgressToDatabase = useCallback(async (overrideQuestions = null) => {
     if (!candidate.email) return;
     
     try {
@@ -103,7 +103,7 @@ export default function IntervieweePage() {
         sessionId: interview.sessionId || Date.now().toString(),
         profile: candidate,
         preInterviewChat: messages.filter(m => interview.status !== 'interviewing'),
-        questions: interview.questions,
+        questions: overrideQuestions || interview.questions,
         resumeText: interview.resumeText,
         interviewStartedAt: interview.startTime,
       });
@@ -320,12 +320,13 @@ export default function IntervieweePage() {
 
     setIsProcessing(true);
     const currentQ = interview.questions[interview.currentQuestionIndex];
+    const timeTaken = Math.max(0, (currentQ?.timeLimit || 0) - (interview.timeRemaining || 0));
 
     // Save answer locally
     dispatch(updateQuestionAnswer({
       questionId: currentQ.questionId,
       answer,
-      timeTaken: currentQ.timeLimit - (interview.timeRemaining || 0),
+      timeTaken,
     }));
 
     // Add question and answer to chat history
@@ -359,9 +360,22 @@ export default function IntervieweePage() {
         feedback: evalData.feedback,
       }));
 
+      // Build the latest snapshot of questions including this evaluation
+      const answeredQuestion = {
+        ...currentQ,
+        answer,
+        timeTaken,
+        score: evalData.score,
+        feedback: evalData.feedback,
+      };
+
+      const updatedQuestions = interview.questions.map((q) =>
+        q.questionId === currentQ.questionId ? answeredQuestion : q
+      );
+
       // Save progress to database after evaluation
       setTimeout(() => {
-        saveProgressToDatabase();
+        saveProgressToDatabase(updatedQuestions);
       }, 500);
 
       // Show feedback with delay
@@ -372,7 +386,7 @@ export default function IntervieweePage() {
         if (isLastQuestion) {
           // Generate final summary
           setTimeout(() => {
-            generateFinalSummary();
+            generateFinalSummary(updatedQuestions);
           }, 1500);
         } else {
           // Calculate next question number
@@ -412,10 +426,11 @@ export default function IntervieweePage() {
   }, [isProcessing, interview.questions, interview.currentQuestionIndex, dispatch, addMessage, generateNextQuestion, saveProgressToDatabase]);
 
   // Generate final summary
-  const generateFinalSummary = async () => {
+  const generateFinalSummary = async (finalQuestions = null) => {
     try {
+      const questionsForSummary = finalQuestions || interview.questions;
       const response = await apiClient.post('/api/generate-summary', {
-        questions: interview.questions,
+        questions: questionsForSummary,
         candidateName: candidate.name,
       });
 
@@ -428,7 +443,7 @@ export default function IntervieweePage() {
       }));
 
       // Save to database
-      await saveCandidateToDatabase(summaryData);
+      await saveCandidateToDatabase(summaryData, questionsForSummary);
       
       addMessage('ai', 'Interview completed! Here are your results.');
     } catch (error) {
@@ -438,10 +453,11 @@ export default function IntervieweePage() {
   };
 
   // Save candidate data to database
-  const saveCandidateToDatabase = async (summaryData) => {
+  const saveCandidateToDatabase = async (summaryData, finalQuestions = null) => {
     try {
       // Ensure questions have sequential numbering
-      const questionsWithNumbers = interview.questions.map((q, index) => ({
+      const sourceQuestions = finalQuestions || interview.questions;
+      const questionsWithNumbers = sourceQuestions.map((q, index) => ({
         ...q,
         questionNumber: index + 1,
         answeredAt: new Date().toISOString(),
