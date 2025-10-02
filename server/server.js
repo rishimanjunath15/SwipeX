@@ -84,62 +84,105 @@ if (process.env.NODE_ENV !== 'production') {
   }
 }
 
-// Initialize server with tests
-async function startServer() {
-  console.log('═'.repeat(60));
-  console.log('  🚀 Starting Swipe Interview Assistant Server');
-  console.log('═'.repeat(60));
-  
-  // Test Gemini API first
-  await testGeminiConnection();
-  
-  // Connect to MongoDB
-  try {
-    await mongoose.connect(process.env.MONGODB_URI);
-    console.log('✅ Connected to MongoDB\n');
-  } catch (err) {
-    console.error('❌ MongoDB connection error:', err.message);
-    console.log('   Check your MONGODB_URI in .env\n');
-    process.exit(1);
+// Initialize MongoDB and routes
+let isConnected = false;
+
+async function connectDatabase() {
+  if (isConnected) {
+    return;
   }
 
-  // API Routes
-  app.use('/api', uploadResumeRoute);
-  app.use('/api', interviewActionRoute);
-  app.use('/api', candidatesRoute);
-  app.use('/api', saveCandidateRoute);
+  try {
+    await mongoose.connect(process.env.MONGODB_URI);
+    isConnected = true;
+    console.log('✅ Connected to MongoDB');
+  } catch (err) {
+    console.error('❌ MongoDB connection error:', err.message);
+    throw err;
+  }
+}
 
-  // Health check endpoint
-  app.get('/api/health', (req, res) => {
+// API Routes
+app.use('/api', uploadResumeRoute);
+app.use('/api', interviewActionRoute);
+app.use('/api', candidatesRoute);
+app.use('/api', saveCandidateRoute);
+
+// Health check endpoint
+app.get('/api/health', async (req, res) => {
+  try {
+    await connectDatabase();
     res.json({ 
       status: 'OK', 
       message: 'Server is running',
       gemini: 'Connected',
       mongodb: 'Connected'
     });
-  });
-
-  // Error handling middleware
-  app.use((err, req, res, next) => {
-    console.error('Error:', err);
-    res.status(err.status || 500).json({
-      error: err.message || 'Internal server error',
+  } catch (error) {
+    res.status(500).json({
+      status: 'ERROR',
+      message: error.message
     });
-  });
+  }
+});
 
-  // Start server
-  app.listen(PORT, () => {
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({
+    message: 'Swipe Interview Assistant API',
+    endpoints: {
+      health: '/api/health',
+      uploadResume: '/api/upload-resume',
+      interviewAction: '/api/interview-action',
+      candidates: '/api/candidates',
+      saveCandidate: '/api/save-candidate'
+    }
+  });
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Error:', err);
+  res.status(err.status || 500).json({
+    error: err.message || 'Internal server error',
+  });
+});
+
+// For local development
+if (process.env.NODE_ENV !== 'production') {
+  async function startServer() {
     console.log('═'.repeat(60));
-    console.log(`  ✅ Server is ready!`);
-    console.log(`  🌐 URL: http://localhost:${PORT}`);
-    console.log(`  📊 Health: http://localhost:${PORT}/api/health`);
+    console.log('  🚀 Starting Swipe Interview Assistant Server');
     console.log('═'.repeat(60));
-    console.log('');
+    
+    // Test Gemini API first
+    await testGeminiConnection();
+    
+    // Connect to MongoDB
+    await connectDatabase();
+    
+    // Start server
+    app.listen(PORT, () => {
+      console.log('═'.repeat(60));
+      console.log(`  ✅ Server is ready!`);
+      console.log(`  🌐 URL: http://localhost:${PORT}`);
+      console.log(`  📊 Health: http://localhost:${PORT}/api/health`);
+      console.log('═'.repeat(60));
+      console.log('');
+    });
+  }
+
+  startServer().catch((error) => {
+    console.error('❌ Failed to start server:', error);
+    process.exit(1);
   });
 }
 
-// Start the server
-startServer().catch((error) => {
-  console.error('❌ Failed to start server:', error);
-  process.exit(1);
-});
+// Export for Vercel serverless
+export default async function handler(req, res) {
+  // Connect to database on each request (serverless)
+  await connectDatabase();
+  
+  // Handle the request with Express
+  return app(req, res);
+};
