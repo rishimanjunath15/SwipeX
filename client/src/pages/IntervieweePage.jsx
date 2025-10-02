@@ -270,12 +270,14 @@ export default function IntervieweePage() {
       // Ensure questionId matches the sequential number
       questionData.questionId = `q${questionNumber}`;
       
+      // Add question to Redux store
       dispatch(addQuestion(questionData));
       
-      // Add delay to show AI is "thinking"
+      // Add delay to show AI is "thinking", then display question in chat
       setTimeout(() => {
         setIsAiTyping(false);
-        addMessage('ai', `Question ${questionNumber}: ${questionData.question}`, 'question');
+        // Don't add question to chat - it's displayed in QuestionCard component
+        // addMessage('ai', questionData.question, 'question');
         setIsProcessing(false);
       }, 1000);
     } catch (error) {
@@ -322,6 +324,9 @@ export default function IntervieweePage() {
       timeTaken: currentQ.timeLimit - (interview.timeRemaining || 0),
     }));
 
+    // Add question and answer to chat history
+    const questionNum = interview.currentQuestionIndex + 1;
+    addMessage('ai', `Q${questionNum}: ${currentQ.question}`, 'question');
     addMessage('user', answer || '(No answer provided)');
     setIsAiTyping(true);
 
