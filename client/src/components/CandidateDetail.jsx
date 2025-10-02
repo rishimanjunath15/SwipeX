@@ -159,70 +159,75 @@ export default function CandidateDetail({ candidateId, onBack }) {
       {candidate.questions && candidate.questions.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Questions & Answers</CardTitle>
+            <CardTitle>Interview Questions & Detailed Responses (Total: {candidate.questions.length})</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-6">
-              {candidate.questions.map((q, index) => (
-                <div key={index} className="border-b last:border-b-0 pb-6 last:pb-0">
-                  {/* Question Header */}
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-2 mb-2">
-                        <span className="font-semibold text-gray-900">
-                          Question {index + 1}
-                        </span>
-                        {q.difficulty && (
+              {candidate.questions.map((q, index) => {
+                const questionNum = index + 1;
+                const difficulty = q.difficulty || (questionNum <= 2 ? 'easy' : questionNum <= 4 ? 'medium' : 'hard');
+                
+                return (
+                  <div key={index} className="border-b last:border-b-0 pb-6 last:pb-0">
+                    {/* Question Header */}
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2 mb-2">
+                          <span className="font-semibold text-gray-900 text-lg">
+                            Question {questionNum} of 6
+                          </span>
                           <span
-                            className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                              q.difficulty === 'easy'
+                            className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              difficulty === 'easy'
                                 ? 'bg-green-100 text-green-800'
-                                : q.difficulty === 'medium'
+                                : difficulty === 'medium'
                                 ? 'bg-yellow-100 text-yellow-800'
                                 : 'bg-red-100 text-red-800'
                             }`}
                           >
-                            {q.difficulty}
+                            {difficulty.toUpperCase()}
                           </span>
-                        )}
+                        </div>
+                        <p className="text-gray-700 font-medium">{q.question}</p>
                       </div>
-                      <p className="text-gray-700">{q.question}</p>
-                    </div>
-                    <div className="ml-4">
-                      <div
-                        className={`px-3 py-1 rounded-full font-bold text-lg ${getScoreColor(
-                          q.score
-                        )} bg-gray-50`}
-                      >
-                        {q.score}/100
+                      <div className="ml-4">
+                        <div
+                          className={`px-4 py-2 rounded-lg font-bold text-xl ${getScoreColor(
+                            q.score
+                          )} bg-gray-50 border-2 ${
+                            q.score >= 80 ? 'border-green-200' : q.score >= 60 ? 'border-yellow-200' : 'border-red-200'
+                          }`}
+                        >
+                          {q.score}/100
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Candidate Answer */}
-                  <div className="mb-3">
-                    <p className="text-sm font-medium text-gray-700 mb-1">Candidate's Answer:</p>
-                    <div className="bg-gray-50 p-3 rounded-lg">
-                      <p className="text-gray-800 whitespace-pre-wrap">
-                        {q.answer || 'No answer provided'}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* AI Feedback */}
-                  {q.feedback && (
-                    <div>
-                      <p className="text-sm font-medium text-gray-700 mb-1 flex items-center space-x-1">
-                        <MessageSquare size={16} />
-                        <span>AI Feedback:</span>
-                      </p>
-                      <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
-                        <p className="text-gray-800">{q.feedback}</p>
+                    {/* Candidate Answer */}
+                    <div className="mb-3">
+                      <p className="text-sm font-medium text-gray-700 mb-2">Candidate's Answer:</p>
+                      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                        <p className="text-gray-800 whitespace-pre-wrap leading-relaxed">
+                          {q.answer || '(No answer provided)'}
+                        </p>
                       </div>
                     </div>
-                  )}
-                </div>
-              ))}
+
+                    {/* AI Feedback */}
+                    {q.feedback && (
+                      <div>
+                        <p className="text-sm font-medium text-gray-700 mb-2 flex items-center space-x-1">
+                          <MessageSquare size={16} />
+                          <span>AI Evaluation Feedback:</span>
+                        </p>
+                        <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                          <p className="text-gray-800 leading-relaxed">{q.feedback}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </CardContent>
         </Card>

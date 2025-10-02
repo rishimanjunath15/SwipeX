@@ -34,6 +34,21 @@ import {
 } from '../redux/candidateSlice';
 
 /**
+ * INTERVIEW QUESTION SEQUENCE (Consistent across all views)
+ * =========================================================
+ * Question 1: EASY - Fundamentals
+ * Question 2: EASY - Basic concepts
+ * Question 3: MEDIUM - Intermediate topics
+ * Question 4: MEDIUM - Common patterns
+ * Question 5: HARD - Advanced concepts
+ * Question 6: HARD - Complex scenarios
+ * 
+ * Total: 6 questions
+ * Focus: Theory-based with simple code examples only
+ * Evaluation: Logic and understanding over syntax
+ */
+
+/**
  * IntervieweePage Component
  * Main page for candidates taking the interview
  */

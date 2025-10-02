@@ -100,28 +100,58 @@ Return only valid JSON matching the schema above.`;
  * @returns {Promise<object>} - Question object
  */
 export async function generateQuestion(difficulty, questionNumber, resumeText) {
-  const timeLimitMap = { easy: 20, medium: 60, hard: 120 };
+  const timeLimitMap = { easy: 30, medium: 60, hard: 90 };
   const timeLimit = timeLimitMap[difficulty] || 60;
   
-  const prompt = `You are a concise interview question generator for Full Stack React/Node roles. Output JSON only.
+  const prompt = `You are a technical interview question generator for Full Stack React/Node.js roles. Output JSON only.
 
-Generate ONE interview question of difficulty "${difficulty}" for a Full Stack React/Node.js developer position. 
+Generate ONE ${difficulty} difficulty question for Question #${questionNumber}/6.
+
+IMPORTANT GUIDELINES:
+- Focus on THEORY-BASED and CONCEPTUAL questions (70% theory, 30% simple code snippets)
+- Avoid large coding tasks or complex implementations
+- For code questions: ask for simple syntax, single function examples, or short code snippets only
+- Keep questions clear, concise, and focused on understanding fundamentals
+- Questions should test knowledge, not extensive coding ability
+
+QUESTION TYPES by Difficulty:
+EASY (Questions 1-2):
+- Basic JavaScript concepts (variables, data types, scope)
+- React fundamentals (components, props, state basics)
+- HTML/CSS basics
+- Simple syntax questions with short code examples
+
+MEDIUM (Questions 3-4):
+- React hooks (useState, useEffect) - theory and simple usage
+- Async JavaScript (promises, async/await) - concepts
+- Node.js basics (modules, npm, middleware concepts)
+- API concepts (REST, HTTP methods)
+
+HARD (Questions 5-6):
+- Advanced React patterns (context, custom hooks, performance)
+- Database concepts and optimization
+- Authentication/Security principles
+- System design concepts (no implementation, just approach)
 
 Schema:
 {
   "questionId": "q${questionNumber}",
   "difficulty": "${difficulty}",
-  "question": "The actual question text",
+  "question": "Clear, concise question focused on theory/concepts. If code is needed, ask for a SHORT snippet or syntax only.",
   "timeLimit": ${timeLimit}
 }
 
-Context from resume:
-${resumeText.substring(0, 500)}
+Context (use minimally):
+${resumeText.substring(0, 300)}
 
-Example output:
-{"questionId":"q1","difficulty":"easy","question":"What is the difference between let, const, and var in JavaScript?","timeLimit":20}
+EXAMPLES:
+Easy: {"questionId":"q1","difficulty":"easy","question":"Explain the difference between let, const, and var in JavaScript. Provide a simple example.","timeLimit":30}
 
-Generate a relevant ${difficulty} question and return only valid JSON.`;
+Medium: {"questionId":"q3","difficulty":"medium","question":"What is the purpose of useEffect in React? Explain its basic syntax and when you would use it.","timeLimit":60}
+
+Hard: {"questionId":"q5","difficulty":"hard","question":"Explain the concept of JWT (JSON Web Tokens) in authentication. What are its main components and advantages?","timeLimit":90}
+
+Generate Question #${questionNumber} with ${difficulty} difficulty. Return ONLY valid JSON.`;
 
   return callGemini(prompt);
 }
@@ -134,66 +164,96 @@ Generate a relevant ${difficulty} question and return only valid JSON.`;
  * @returns {Promise<object>} - Evaluation with score and feedback
  */
 export async function evaluateAnswer(question, answer, difficulty) {
-  const prompt = `You are an objective grader for technical interviews. Return JSON only.
+  const prompt = `You are an objective technical interview evaluator. Focus on LOGIC, UNDERSTANDING, and APPROACH. Return JSON only.
+
+CRITICAL EVALUATION RULES:
+1. IGNORE syntax errors, typos, or formatting issues completely
+2. Focus ONLY on: conceptual understanding, logic, problem-solving approach, and completeness
+3. Award points for correct thinking even if code has minor errors
+4. Evaluate the IDEA and METHOD, not perfect syntax
 
 Grading Rubric (total 100 points):
-- Correctness: 0-40 points
-- Completeness (edge cases/examples): 0-30 points
-- Clarity & Explanation: 0-20 points
-- Efficiency/Best practices: 0-10 points
+- Conceptual Understanding (0-40 points): Does the candidate understand the core concept?
+- Logic & Approach (0-30 points): Is the reasoning and method correct?
+- Completeness (0-20 points): Did they cover main points and examples?
+- Explanation Clarity (0-10 points): Is the explanation clear and well-structured?
 
 Question: ${question}
-
 Candidate's Answer: ${answer}
-
 Difficulty: ${difficulty}
 
-Evaluate the answer and return JSON:
+SCORING GUIDELINES:
+- 90-100: Excellent understanding with complete explanation
+- 75-89: Good understanding with minor gaps
+- 60-74: Acceptable understanding but missing key points
+- 40-59: Partial understanding with significant gaps
+- 0-39: Poor understanding or mostly incorrect
+
+Return JSON:
 {
   "score": 75,
-  "feedback": "Brief feedback mentioning what was good and what was missing"
+  "feedback": "2-3 sentences: What was good, what could improve (NEVER mention syntax errors)"
 }
 
-Example:
-{"score":72,"feedback":"Good conceptual understanding. Missing practical examples and edge case handling."}
+EXAMPLE:
+{"score":78,"feedback":"Solid understanding of the core concept with good examples. The explanation of the use case was clear. Could have mentioned one more scenario for completeness."}
 
-Return only valid JSON with integer score (0-100) and concise feedback.`;
+Evaluate and return ONLY valid JSON.`;
 
   return callGemini(prompt);
 }
 
 /**
  * Generate final interview summary
- * @param {Array} questions - Array of question objects with scores
+ * @param {Array} questions - Array of question objects with scores (MUST be exactly 6 questions)
  * @param {string} candidateName - Name of the candidate
  * @returns {Promise<object>} - Final summary with total score
  */
 export async function generateFinalSummary(questions, candidateName) {
-  const questionsText = questions.map(q => 
-    `Q${q.questionId.replace('q', '')} (${q.difficulty}): ${q.score}/100`
-  ).join('\n');
+  // Ensure we have exactly 6 questions for consistency
+  if (questions.length !== 6) {
+    console.warn(`Expected 6 questions, but received ${questions.length}`);
+  }
   
-  const prompt = `You are an interview summary generator. Return JSON only.
+  const questionsText = questions.map((q, index) => {
+    const questionNum = index + 1;
+    const difficulty = q.difficulty || (questionNum <= 2 ? 'easy' : questionNum <= 4 ? 'medium' : 'hard');
+    return `Q${questionNum} (${difficulty}): ${q.score}/100`;
+  }).join('\n');
+  
+  const prompt = `You are an interview summary generator for a Full Stack React/Node.js technical interview. Return JSON only.
 
-Aggregate the following question scores into a final assessment:
+INTERVIEW STRUCTURE (6 Questions Total):
+- Questions 1-2: EASY (Fundamentals, Basic concepts)
+- Questions 3-4: MEDIUM (Intermediate concepts, Common patterns)
+- Questions 5-6: HARD (Advanced topics, Complex scenarios)
 
+Score Breakdown:
 ${questionsText}
 
 Candidate: ${candidateName}
+Total Questions: ${questions.length}
 
-Calculate the average score and provide a 3-4 sentence professional summary of the candidate's performance.
+Calculate the AVERAGE score across ALL questions and provide a professional 3-4 sentence summary.
+
+SCORING INTERPRETATION:
+- 90-100: Exceptional technical knowledge
+- 80-89: Strong performance with minor gaps
+- 70-79: Good understanding, room for improvement
+- 60-69: Acceptable but needs development
+- Below 60: Needs significant improvement
 
 Schema:
 {
   "totalScore": 78,
-  "breakdown": [{"questionId":"q1","score":90}, {"questionId":"q2","score":85}, ...],
-  "summary": "Professional 3-4 sentence summary of performance"
+  "breakdown": [{"questionId":"q1","score":85}, {"questionId":"q2","score":80}, {"questionId":"q3","score":75}, {"questionId":"q4","score":82}, {"questionId":"q5","score":70}, {"questionId":"q6","score":76}],
+  "summary": "Professional 3-4 sentence summary covering: overall performance, strengths, areas for improvement, and final recommendation"
 }
 
 Example:
-{"totalScore":78,"breakdown":[{"questionId":"q1","score":85},{"questionId":"q2","score":80}],"summary":"The candidate demonstrated solid understanding of fundamental concepts with good problem-solving skills. Some areas need improvement in advanced topics and optimization techniques. Overall, a promising candidate with potential for growth."}
+{"totalScore":78,"breakdown":[{"questionId":"q1","score":85},{"questionId":"q2","score":80},{"questionId":"q3","score":75},{"questionId":"q4","score":82},{"questionId":"q5","score":70},{"questionId":"q6","score":76}],"summary":"The candidate demonstrated solid understanding of fundamental React and JavaScript concepts with good problem-solving approaches. Performance was strongest in basic and intermediate questions, showing clear conceptual knowledge. Some challenges with advanced topics suggest areas for continued learning. Overall, a promising candidate with a good foundation and potential for growth."}
 
-Return only valid JSON.`;
+Return ONLY valid JSON with all ${questions.length} questions in the breakdown array.`;
 
   return callGemini(prompt);
 }

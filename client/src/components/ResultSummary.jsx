@@ -61,29 +61,44 @@ export default function ResultSummary({
           <div className="space-y-3">
             <h4 className="font-semibold text-gray-900 flex items-center space-x-2">
               <TrendingUp size={18} />
-              <span>Question Breakdown</span>
+              <span>Performance Breakdown (6 Questions)</span>
             </h4>
-            <div className="space-y-2">
-              {breakdown.map((item, index) => (
-                <div
-                  key={index}
-                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                >
-                  <span className="font-medium text-gray-700">
-                    Question {item.questionId.replace('q', '')}
-                  </span>
-                  <div className="flex items-center space-x-2">
-                    <span className={`font-bold ${getScoreColor(item.score)}`}>
-                      {item.score}/100
-                    </span>
-                    {item.score >= 70 ? (
-                      <CheckCircle size={18} className="text-green-600" />
-                    ) : (
-                      <XCircle size={18} className="text-red-600" />
-                    )}
+            <div className="grid grid-cols-1 gap-2">
+              {breakdown.map((item, index) => {
+                const questionNum = parseInt(item.questionId.replace('q', ''));
+                const difficulty = questionNum <= 2 ? 'easy' : questionNum <= 4 ? 'medium' : 'hard';
+                const difficultyColor = difficulty === 'easy' 
+                  ? 'bg-green-100 text-green-800' 
+                  : difficulty === 'medium' 
+                  ? 'bg-yellow-100 text-yellow-800' 
+                  : 'bg-red-100 text-red-800';
+                
+                return (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200"
+                  >
+                    <div className="flex items-center space-x-3">
+                      <span className="font-medium text-gray-700">
+                        Question {questionNum}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${difficultyColor}`}>
+                        {difficulty}
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className={`font-bold text-lg ${getScoreColor(item.score)}`}>
+                        {item.score}/100
+                      </span>
+                      {item.score >= 70 ? (
+                        <CheckCircle size={20} className="text-green-600" />
+                      ) : (
+                        <XCircle size={20} className="text-red-600" />
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
