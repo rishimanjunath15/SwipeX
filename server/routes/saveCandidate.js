@@ -90,9 +90,14 @@ router.put('/update-candidate/:id', async (req, res) => {
     const { id } = req.params;
     const updateData = req.body;
 
+    const updatePayload = { ...updateData };
+    if (updateData.status === 'completed' && !updateData.completedAt) {
+      updatePayload.completedAt = new Date();
+    }
+
     const candidate = await Candidate.findByIdAndUpdate(
       id,
-      { ...updateData, completedAt: new Date() },
+      updatePayload,
       { new: true, runValidators: true }
     );
 

@@ -9,9 +9,43 @@ const router = express.Router();
  */
 router.get('/candidates', async (req, res) => {
   try {
-    const candidates = await Candidate.find()
-      .select('_id name email phone totalScore summary status createdAt completedAt')
-      .sort({ createdAt: -1 }); // Most recent first
+    const candidatesRaw = await Candidate.find()
+      .select('_id name email phone totalScore summary status createdAt completedAt questions.score')
+      .sort({ createdAt: -1 })
+      .lean(); // Most recent first
+
+    const candidates = await Promise.all(
+      candidatesRaw.map(async (candidate) => {
+        const scores = (candidate.questions || [])
+          .map((q) => (typeof q?.score === 'number' ? q.score : null))
+          .filter((score) => score !== null);
+
+        const computedAverage = scores.length
+          ? Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length)
+          : 0;
+
+        const normalizedScore = candidate.totalScore && candidate.totalScore > 0
+          ? Math.round(candidate.totalScore)
+          : computedAverage;
+
+        if (normalizedScore > 0 && normalizedScore !== candidate.totalScore) {
+          try {
+            await Candidate.updateOne(
+              { _id: candidate._id },
+              { $set: { totalScore: normalizedScore } }
+            );
+          } catch (updateErr) {
+            console.warn('Failed to sync candidate totalScore', candidate._id, updateErr.message);
+          }
+        }
+
+        const { questions, ...rest } = candidate;
+        return {
+          ...rest,
+          totalScore: normalizedScore,
+        };
+      })
+    );
 
     res.json({
       candidates,
