@@ -570,11 +570,6 @@ export default function IntervieweePage() {
     }
   }, [interview.questions, candidate.name, dispatch, addMessage, saveCandidateToDatabase]);
 
-  // Legacy wrapper for backwards compatibility
-  const generateFinalSummary = useCallback(async () => {
-    return generateFinalSummaryWithQuestions(interview.questions);
-  }, [generateFinalSummaryWithQuestions, interview.questions]);
-
   // Handle start over
   const handleStartOver = () => {
     dispatch(resetInterview());
