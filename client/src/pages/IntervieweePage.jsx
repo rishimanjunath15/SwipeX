@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import ResumeUpload from '../components/ResumeUpload';
 import ChatWindow from '../components/ChatWindow';
@@ -65,6 +65,9 @@ export default function IntervieweePage() {
   const [isAiTyping, setIsAiTyping] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [readyToBegin, setReadyToBegin] = useState(false);
+  
+  // Ref to break circular dependency in useCallback
+  const saveCandidateToDatabaseRef = useRef(null);
 
   // Check for unfinished session on mount
   useEffect(() => {
@@ -310,6 +313,91 @@ export default function IntervieweePage() {
     }, 800);
   }, [dispatch, addMessage, generateNextQuestion, saveProgressToDatabase]);
 
+  // Generate final summary with explicitly provided questions array
+  const generateFinalSummaryWithQuestions = useCallback(async (questionsArray) => {
+    try {
+      // Use the provided questions array (which has the fresh 6th question score)
+      // or fall back to Redux state
+      const currentQuestions = questionsArray || interview.questions;
+      
+      console.log('=== GENERATING FINAL SUMMARY ===');
+      console.log('Total questions:', currentQuestions.length);
+      console.log('Detailed question data:');
+      currentQuestions.forEach((q, idx) => {
+        console.log(`  Q${idx + 1} (${q.questionId}):`, {
+          difficulty: q.difficulty,
+          hasQuestion: !!q.question,
+          hasAnswer: !!q.answer,
+          score: q.score,
+          hasFeedback: !!q.feedback
+        });
+      });
+      
+      // Ensure we have all 6 questions
+      if (currentQuestions.length !== 6) {
+        console.error('❌ Expected 6 questions, got:', currentQuestions.length);
+        dispatch(setError('Interview incomplete. Please restart.'));
+        return;
+      }
+
+      // Check if all questions have scores
+      const questionsWithScores = currentQuestions.filter(q => 
+        q.score !== undefined && 
+        q.score !== null && 
+        typeof q.score === 'number'
+      );
+      
+      console.log(`Questions with valid scores: ${questionsWithScores.length}/6`);
+      
+      if (questionsWithScores.length !== 6) {
+        console.error('❌ Not all questions have valid scores!');
+        console.error('Missing scores for questions:', currentQuestions
+          .map((q, idx) => ({ index: idx + 1, questionId: q.questionId, score: q.score }))
+          .filter(q => !q.score || typeof q.score !== 'number')
+        );
+      }
+      
+      const response = await apiClient.post('/api/generate-summary', {
+        questions: currentQuestions,
+        candidateName: candidate.name,
+      });
+
+      const summaryData = response.data;
+      console.log('Summary response:', summaryData);
+      
+      if (!summaryData.totalScore || summaryData.totalScore === 0) {
+        console.error('Summary generation returned zero score:', summaryData);
+        // Fallback: calculate average manually
+        const validScores = currentQuestions
+          .map(q => q.score)
+          .filter(score => typeof score === 'number' && score >= 0 && score <= 100);
+        
+        if (validScores.length > 0) {
+          const manualTotalScore = Math.round(validScores.reduce((sum, score) => sum + score, 0) / validScores.length);
+          console.log('Manual calculated score:', manualTotalScore);
+          summaryData.totalScore = manualTotalScore;
+        }
+      }
+      
+      dispatch(setFinalResults({
+        totalScore: summaryData.totalScore,
+        summary: summaryData.summary,
+        breakdown: summaryData.breakdown,
+      }));
+
+      // Save to database with the SAME questions we used for summary
+      // Use ref to break circular dependency
+      if (saveCandidateToDatabaseRef.current) {
+        await saveCandidateToDatabaseRef.current(summaryData, currentQuestions);
+      }
+      
+      addMessage('ai', 'Interview completed! Here are your results.');
+    } catch (error) {
+      console.error('Error generating summary:', error);
+      dispatch(setError('Failed to generate final summary.'));
+    }
+  }, [interview.questions, candidate.name, dispatch, addMessage]);
+
   // Handle answer submission
   const handleAnswerSubmit = useCallback(async (answer) => {
     if (isProcessing) return;
@@ -487,88 +575,11 @@ export default function IntervieweePage() {
       console.error('Error saving candidate:', error);
     }
   }, [candidate, interview.questions, interview.resumeText, messages]);
-
-  // Generate final summary with explicitly provided questions array
-  const generateFinalSummaryWithQuestions = useCallback(async (questionsArray) => {
-    try {
-      // Use the provided questions array (which has the fresh 6th question score)
-      // or fall back to Redux state
-      const currentQuestions = questionsArray || interview.questions;
-      
-      console.log('=== GENERATING FINAL SUMMARY ===');
-      console.log('Total questions:', currentQuestions.length);
-      console.log('Detailed question data:');
-      currentQuestions.forEach((q, idx) => {
-        console.log(`  Q${idx + 1} (${q.questionId}):`, {
-          difficulty: q.difficulty,
-          hasQuestion: !!q.question,
-          hasAnswer: !!q.answer,
-          score: q.score,
-          hasFeedback: !!q.feedback
-        });
-      });
-      
-      // Ensure we have all 6 questions
-      if (currentQuestions.length !== 6) {
-        console.error('❌ Expected 6 questions, got:', currentQuestions.length);
-        dispatch(setError('Interview incomplete. Please restart.'));
-        return;
-      }
-
-      // Check if all questions have scores
-      const questionsWithScores = currentQuestions.filter(q => 
-        q.score !== undefined && 
-        q.score !== null && 
-        typeof q.score === 'number'
-      );
-      
-      console.log(`Questions with valid scores: ${questionsWithScores.length}/6`);
-      
-      if (questionsWithScores.length !== 6) {
-        console.error('❌ Not all questions have valid scores!');
-        console.error('Missing scores for questions:', currentQuestions
-          .map((q, idx) => ({ index: idx + 1, questionId: q.questionId, score: q.score }))
-          .filter(q => !q.score || typeof q.score !== 'number')
-        );
-      }
-      
-      const response = await apiClient.post('/api/generate-summary', {
-        questions: currentQuestions,
-        candidateName: candidate.name,
-      });
-
-      const summaryData = response.data;
-      console.log('Summary response:', summaryData);
-      
-      if (!summaryData.totalScore || summaryData.totalScore === 0) {
-        console.error('Summary generation returned zero score:', summaryData);
-        // Fallback: calculate average manually
-        const validScores = currentQuestions
-          .map(q => q.score)
-          .filter(score => typeof score === 'number' && score >= 0 && score <= 100);
-        
-        if (validScores.length > 0) {
-          const manualTotalScore = Math.round(validScores.reduce((sum, score) => sum + score, 0) / validScores.length);
-          console.log('Manual calculated score:', manualTotalScore);
-          summaryData.totalScore = manualTotalScore;
-        }
-      }
-      
-      dispatch(setFinalResults({
-        totalScore: summaryData.totalScore,
-        summary: summaryData.summary,
-        breakdown: summaryData.breakdown,
-      }));
-
-      // Save to database with the SAME questions we used for summary
-      await saveCandidateToDatabase(summaryData, currentQuestions);
-      
-      addMessage('ai', 'Interview completed! Here are your results.');
-    } catch (error) {
-      console.error('Error generating summary:', error);
-      dispatch(setError('Failed to generate final summary.'));
-    }
-  }, [interview.questions, candidate.name, dispatch, addMessage, saveCandidateToDatabase]);
+  
+  // Update ref whenever the function changes
+  useEffect(() => {
+    saveCandidateToDatabaseRef.current = saveCandidateToDatabase;
+  }, [saveCandidateToDatabase]);
 
   // Handle start over
   const handleStartOver = () => {
