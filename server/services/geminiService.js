@@ -97,9 +97,10 @@ Return only valid JSON matching the schema above.`;
  * @param {string} difficulty - 'easy', 'medium', or 'hard'
  * @param {number} questionNumber - Question number (1-6)
  * @param {string} resumeText - Candidate's resume for context
+ * @param {string} previousQuestions - Previously asked questions to avoid repetition
  * @returns {Promise<object>} - Question object
  */
-export async function generateQuestion(difficulty, questionNumber, resumeText) {
+export async function generateQuestion(difficulty, questionNumber, resumeText, previousQuestions = '') {
   const timeLimitMap = { easy: 30, medium: 60, hard: 90 };
   const timeLimit = timeLimitMap[difficulty] || 60;
   
@@ -107,31 +108,52 @@ export async function generateQuestion(difficulty, questionNumber, resumeText) {
 
 Generate ONE ${difficulty} difficulty question for Question #${questionNumber}/6.
 
+CRITICAL REQUIREMENTS:
+1. The questionId MUST be EXACTLY "q${questionNumber}" (not q1, q2, etc. but the actual number ${questionNumber})
+2. AVOID repeating topics from previous questions
+3. Ensure each question covers a DIFFERENT area of Full Stack development
+
+${previousQuestions ? `PREVIOUSLY ASKED QUESTIONS (DO NOT REPEAT THESE TOPICS):
+${previousQuestions}
+
+YOU MUST ASK ABOUT A COMPLETELY DIFFERENT TOPIC!` : ''}
+
 IMPORTANT GUIDELINES:
 - Focus on THEORY-BASED and CONCEPTUAL questions (70% theory, 30% simple code snippets)
 - Avoid large coding tasks or complex implementations
 - For code questions: ask for simple syntax, single function examples, or short code snippets only
 - Keep questions clear, concise, and focused on understanding fundamentals
 - Questions should test knowledge, not extensive coding ability
+- DIVERSIFY TOPICS: If React was asked, try JavaScript, Node.js, APIs, CSS, etc.
 
 QUESTION TYPES by Difficulty:
 EASY (Questions 1-2):
-- Basic JavaScript concepts (variables, data types, scope)
-- React fundamentals (components, props, state basics)
-- HTML/CSS basics
+- Basic JavaScript concepts (variables, data types, scope, functions, arrays)
+- React fundamentals (components, props, state basics, JSX)
+- HTML/CSS basics (selectors, box model, flexbox)
 - Simple syntax questions with short code examples
 
 MEDIUM (Questions 3-4):
-- React hooks (useState, useEffect) - theory and simple usage
-- Async JavaScript (promises, async/await) - concepts
-- Node.js basics (modules, npm, middleware concepts)
-- API concepts (REST, HTTP methods)
+- React hooks (useState, useEffect, useContext) - theory and simple usage
+- Async JavaScript (promises, async/await, callbacks) - concepts
+- Node.js basics (modules, npm, Express middleware, routing)
+- API concepts (REST, HTTP methods, status codes)
+- CSS advanced (Grid, animations, responsive design)
 
 HARD (Questions 5-6):
-- Advanced React patterns (context, custom hooks, performance)
-- Database concepts and optimization
-- Authentication/Security principles
-- System design concepts (no implementation, just approach)
+- Advanced React patterns (Context API, custom hooks, performance optimization, memo)
+- Database concepts (SQL vs NoSQL, indexing, relationships)
+- Authentication/Security principles (JWT, OAuth, CORS, XSS)
+- System design concepts (scalability, caching, load balancing)
+- Node.js advanced (streams, clusters, event loop)
+
+TOPIC VARIETY EXAMPLES:
+Q1: JavaScript basics
+Q2: React components
+Q3: Node.js routing
+Q4: CSS flexbox
+Q5: Authentication (JWT)
+Q6: Database optimization
 
 Schema:
 {
@@ -147,11 +169,11 @@ ${resumeText.substring(0, 300)}
 EXAMPLES:
 Easy: {"questionId":"q1","difficulty":"easy","question":"Explain the difference between let, const, and var in JavaScript. Provide a simple example.","timeLimit":30}
 
-Medium: {"questionId":"q3","difficulty":"medium","question":"What is the purpose of useEffect in React? Explain its basic syntax and when you would use it.","timeLimit":60}
+Medium: {"questionId":"q3","difficulty":"medium","question":"What is Express middleware in Node.js? Explain with a simple example of how to use it.","timeLimit":60}
 
 Hard: {"questionId":"q5","difficulty":"hard","question":"Explain the concept of JWT (JSON Web Tokens) in authentication. What are its main components and advantages?","timeLimit":90}
 
-Generate Question #${questionNumber} with ${difficulty} difficulty. Return ONLY valid JSON.`;
+Generate Question #${questionNumber} with ${difficulty} difficulty on a NEW TOPIC. Return ONLY valid JSON with questionId="q${questionNumber}".`;
 
   return callGemini(prompt);
 }
@@ -215,10 +237,11 @@ export async function generateFinalSummary(questions, candidateName) {
     console.warn(`Expected 6 questions, but received ${questions.length}`);
   }
   
+  // Ensure questions have sequential IDs and proper numbering
   const questionsText = questions.map((q, index) => {
     const questionNum = index + 1;
     const difficulty = q.difficulty || (questionNum <= 2 ? 'easy' : questionNum <= 4 ? 'medium' : 'hard');
-    return `Q${questionNum} (${difficulty}): ${q.score}/100`;
+    return `Q${questionNum} (${difficulty}): ${q.score}/100 - "${q.question.substring(0, 60)}..."`;
   }).join('\n');
   
   const prompt = `You are an interview summary generator for a Full Stack React/Node.js technical interview. Return JSON only.

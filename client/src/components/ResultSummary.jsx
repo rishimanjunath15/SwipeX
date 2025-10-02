@@ -61,11 +61,12 @@ export default function ResultSummary({
           <div className="space-y-3">
             <h4 className="font-semibold text-gray-900 flex items-center space-x-2">
               <TrendingUp size={18} />
-              <span>Performance Breakdown (6 Questions)</span>
+              <span>Performance Breakdown ({breakdown.length} Questions)</span>
             </h4>
             <div className="grid grid-cols-1 gap-2">
               {breakdown.map((item, index) => {
-                const questionNum = parseInt(item.questionId.replace('q', ''));
+                // Use array index for sequential numbering (1, 2, 3, 4, 5, 6)
+                const questionNum = index + 1;
                 const difficulty = questionNum <= 2 ? 'easy' : questionNum <= 4 ? 'medium' : 'hard';
                 const difficultyColor = difficulty === 'easy' 
                   ? 'bg-green-100 text-green-800' 
@@ -83,7 +84,7 @@ export default function ResultSummary({
                         Question {questionNum}
                       </span>
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${difficultyColor}`}>
-                        {difficulty}
+                        {difficulty.toUpperCase()}
                       </span>
                     </div>
                     <div className="flex items-center space-x-2">

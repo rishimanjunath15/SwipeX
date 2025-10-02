@@ -67,10 +67,10 @@ async function handleSubmitField(req, res) {
 async function handleNextQuestion(req, res) {
   try {
     const { payload } = req.body;
-    const { questionNumber, difficulty, resumeText } = payload;
+    const { questionNumber, difficulty, resumeText, previousQuestions } = payload;
 
-    // Generate question using Gemini
-    const questionData = await generateQuestion(difficulty, questionNumber, resumeText);
+    // Generate question using Gemini, passing previous questions to avoid repetition
+    const questionData = await generateQuestion(difficulty, questionNumber, resumeText, previousQuestions || '');
 
     res.json({
       type: 'question',

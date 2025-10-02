@@ -202,22 +202,30 @@ export default function IntervieweePage() {
     setIsProcessing(true);
     
     try {
+      // Get previous questions to avoid topic repetition
+      const previousQuestions = interview.questions.map(q => q.question).join('\n');
+      
       const response = await apiClient.post('/api/interview-action', {
         action: 'next_question',
         payload: {
           questionNumber,
           difficulty,
           resumeText: interview.resumeText,
+          previousQuestions, // Send previous questions to avoid repetition
         },
       });
 
       const questionData = response.data;
+      
+      // Ensure questionId matches the sequential number
+      questionData.questionId = `q${questionNumber}`;
+      
       dispatch(addQuestion(questionData));
       
       // Add delay to show AI is "thinking"
       setTimeout(() => {
         setIsAiTyping(false);
-        addMessage('ai', questionData.question, 'question');
+        addMessage('ai', `Question ${questionNumber}: ${questionData.question}`, 'question');
         setIsProcessing(false);
       }, 1000);
     } catch (error) {
@@ -226,7 +234,7 @@ export default function IntervieweePage() {
       setIsProcessing(false);
       dispatch(setError('Failed to generate question. Please try again.'));
     }
-  }, [interview.resumeText, dispatch, addMessage]);
+  }, [interview.resumeText, interview.questions, dispatch, addMessage]);
 
   // Start the interview process
   const startInterviewProcess = useCallback(() => {
