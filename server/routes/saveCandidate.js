@@ -1,0 +1,104 @@
+import express from 'express';
+import Candidate from '../models/Candidate.js';
+
+const router = express.Router();
+
+/**
+ * POST /api/save-candidate
+ * Save complete candidate interview data to MongoDB
+ */
+router.post('/save-candidate', async (req, res) => {
+  try {
+    const {
+      name,
+      email,
+      phone,
+      resumeText,
+      questions,
+      totalScore,
+      summary,
+    } = req.body;
+
+    // Validate required fields
+    if (!name || !email) {
+      return res.status(400).json({
+        error: 'Name and email are required',
+      });
+    }
+
+    if (!questions || questions.length === 0) {
+      return res.status(400).json({
+        error: 'Interview questions and answers are required',
+      });
+    }
+
+    // Create new candidate record
+    const candidate = new Candidate({
+      name,
+      email,
+      phone: phone || '',
+      resumeText: resumeText || '',
+      questions,
+      totalScore: totalScore || 0,
+      summary: summary || '',
+      status: 'completed',
+      completedAt: new Date(),
+    });
+
+    await candidate.save();
+
+    res.status(201).json({
+      message: 'Candidate saved successfully',
+      candidateId: candidate._id,
+      candidate,
+    });
+  } catch (error) {
+    console.error('Save candidate error:', error);
+    
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({
+        error: 'Invalid candidate data',
+        details: error.message,
+      });
+    }
+    
+    res.status(500).json({
+      error: 'Saving failed. Please try again.',
+    });
+  }
+});
+
+/**
+ * PUT /api/update-candidate/:id
+ * Update existing candidate record (for resume sessions)
+ */
+router.put('/update-candidate/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    const candidate = await Candidate.findByIdAndUpdate(
+      id,
+      { ...updateData, completedAt: new Date() },
+      { new: true, runValidators: true }
+    );
+
+    if (!candidate) {
+      return res.status(404).json({
+        error: 'Candidate not found',
+      });
+    }
+
+    res.json({
+      message: 'Candidate updated successfully',
+      candidate,
+    });
+  } catch (error) {
+    console.error('Update candidate error:', error);
+    res.status(500).json({
+      error: 'Update failed. Please try again.',
+    });
+  }
+});
+
+export default router;

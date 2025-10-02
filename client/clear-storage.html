@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clear Storage</title>
+</head>
+<body>
+    <h1>Clearing localStorage...</h1>
+    <script>
+        // Clear localStorage
+        localStorage.clear();
+        
+        // Clear sessionStorage
+        sessionStorage.clear();
+        
+        alert('Storage cleared! Click OK to reload.');
+        
+        // Redirect to main app
+        window.location.href = 'http://localhost:3000';
+    </script>
+</body>
+</html>
