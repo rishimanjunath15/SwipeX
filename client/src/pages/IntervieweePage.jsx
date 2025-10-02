@@ -368,24 +368,40 @@ export default function IntervieweePage() {
         addMessage('ai', `Score: ${evalData.score}/100\n\n${evalData.feedback}`, 'eval');
         
         if (isLastQuestion) {
-          // For the 6th question: CRITICAL - ensure all data is synchronized
-          console.log('Last question answered. Current state:', {
+          // For the 6th question: CRITICAL - manually build complete questions array
+          // Don't rely on Redux state which may not be updated yet
+          const completeQuestions = interview.questions.slice(); // Create a copy
+          
+          // Find and update the last question with the evaluation data
+          const lastQuestionIndex = completeQuestions.findIndex(q => q.questionId === currentQ.questionId);
+          if (lastQuestionIndex !== -1) {
+            completeQuestions[lastQuestionIndex] = {
+              ...completeQuestions[lastQuestionIndex],
+              answer: answer,
+              score: evalData.score,
+              feedback: evalData.feedback,
+              timeTaken: currentQ.timeLimit - (interview.timeRemaining || 0),
+            };
+          }
+          
+          console.log('Last question answered. Complete questions array:', {
             currentIndex: interview.currentQuestionIndex,
-            totalQuestions: interview.questions.length,
+            totalQuestions: completeQuestions.length,
             lastQuestionScore: evalData.score,
-            allScores: interview.questions.map(q => q.score)
+            allScores: completeQuestions.map(q => q.score),
+            lastQuestion: completeQuestions[5]
           });
           
-          // Wait a bit longer to ensure Redux state is fully updated
+          // Wait a bit to show feedback, then generate summary
           setTimeout(() => {
             setIsProcessing(false);
             saveProgressToDatabase();
           }, 1000);
           
-          // Generate final summary with longer delay to ensure all scores are saved
+          // Generate final summary with the complete questions array
           setTimeout(() => {
-            console.log('Generating final summary now...');
-            generateFinalSummary();
+            console.log('Generating final summary now with complete data...');
+            generateFinalSummary(completeQuestions);
           }, 3000);
         } else {
           // For questions 1-5: Generate next question
@@ -472,10 +488,11 @@ export default function IntervieweePage() {
   }, [candidate, interview.questions, interview.resumeText, messages]);
 
   // Generate final summary
-  const generateFinalSummary = useCallback(async () => {
+  const generateFinalSummary = useCallback(async (questionsOverride = null) => {
     try {
-      // CRITICAL: Get the absolute latest state from Redux
-      const currentQuestions = interview.questions;
+      // CRITICAL: Use provided questions or get from Redux
+      // questionsOverride is used to pass complete data for 6th question
+      const currentQuestions = questionsOverride || interview.questions;
       
       console.log('=== GENERATING FINAL SUMMARY ===');
       console.log('Total questions:', currentQuestions.length);
