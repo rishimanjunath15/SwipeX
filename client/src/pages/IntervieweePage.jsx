@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import ResumeUpload from '../components/ResumeUpload';
 import ChatWindow from '../components/ChatWindow';
@@ -65,9 +65,6 @@ export default function IntervieweePage() {
   const [isAiTyping, setIsAiTyping] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [readyToBegin, setReadyToBegin] = useState(false);
-  
-  // Ref to break circular dependency in useCallback
-  const saveCandidateToDatabaseRef = useRef(null);
 
   // Check for unfinished session on mount
   useEffect(() => {
@@ -313,12 +310,172 @@ export default function IntervieweePage() {
     }, 800);
   }, [dispatch, addMessage, generateNextQuestion, saveProgressToDatabase]);
 
-  // Generate final summary with explicitly provided questions array
-  const generateFinalSummaryWithQuestions = useCallback(async (questionsArray) => {
+  // Handle answer submission
+  const handleAnswerSubmit = useCallback(async (answer) => {
+    if (isProcessing) return;
+
+    setIsProcessing(true);
+    const currentQ = interview.questions[interview.currentQuestionIndex];
+
+    // Save answer locally
+    dispatch(updateQuestionAnswer({
+      questionId: currentQ.questionId,
+      answer,
+      timeTaken: currentQ.timeLimit - (interview.timeRemaining || 0),
+    }));
+
+    // Add question and answer to chat history
+    const questionNum = interview.currentQuestionIndex + 1;
+    addMessage('ai', `Q${questionNum}: ${currentQ.question}`, 'question');
+    addMessage('user', answer || '(No answer provided)');
+    setIsAiTyping(true);
+
     try {
-      // Use the provided questions array (which has the fresh 6th question score)
-      // or fall back to Redux state
-      const currentQuestions = questionsArray || interview.questions;
+      // Submit to server for evaluation
+      const isLastQuestion = interview.currentQuestionIndex === 5;
+      
+      const response = await apiClient.post('/api/interview-action', {
+        action: 'submit_answer',
+        payload: {
+          questionId: currentQ.questionId,
+          question: currentQ.question,
+          answer,
+          difficulty: currentQ.difficulty,
+          isLastQuestion,
+        },
+      });
+
+      const evalData = response.data;
+      
+      console.log(`📊 Evaluation received for Q${questionNum}:`, {
+        questionId: currentQ.questionId,
+        score: evalData.score,
+        isLastQuestion
+      });
+      
+      // Update question with score and feedback
+      dispatch(updateQuestionEvaluation({
+        questionId: currentQ.questionId,
+        score: evalData.score,
+        feedback: evalData.feedback,
+      }));
+      
+      console.log(`✅ Score updated in Redux for Q${questionNum}`);
+
+      // Show feedback with delay
+      setTimeout(() => {
+        setIsAiTyping(false);
+        addMessage('ai', `Score: ${evalData.score}/100\n\n${evalData.feedback}`, 'eval');
+        
+        if (isLastQuestion) {
+          // For the 6th question: CRITICAL - ensure all data is synchronized
+          console.log('Last question answered. Current state:', {
+            currentIndex: interview.currentQuestionIndex,
+            totalQuestions: interview.questions.length,
+            lastQuestionScore: evalData.score,
+            allScores: interview.questions.map(q => q.score)
+          });
+          
+          // Wait a bit longer to ensure Redux state is fully updated
+          setTimeout(() => {
+            setIsProcessing(false);
+            saveProgressToDatabase();
+          }, 1000);
+          
+          // Generate final summary with longer delay to ensure all scores are saved
+          setTimeout(() => {
+            console.log('Generating final summary now...');
+            generateFinalSummary();
+          }, 3000);
+        } else {
+          // For questions 1-5: Generate next question
+          setIsProcessing(false);
+          
+          // Calculate next question number
+          const nextQuestionNumber = interview.currentQuestionIndex + 2;
+          const nextDifficulty = nextQuestionNumber <= 2 ? 'easy' : nextQuestionNumber <= 4 ? 'medium' : 'hard';
+          
+          console.log(`Moving to question ${nextQuestionNumber} (${nextDifficulty})`);
+          
+          // Generate next question FIRST (this adds it to the array)
+          // THEN move to next question index
+          setTimeout(async () => {
+            await generateNextQuestion(nextQuestionNumber, nextDifficulty);
+            // After question is generated and added to array, move to next index
+            setTimeout(() => {
+              dispatch(nextQuestion());
+            }, 500);
+          }, 2000);
+        }
+      }, 1500);
+    } catch (error) {
+      console.error('Error evaluating answer:', error);
+      setIsAiTyping(false);
+      setIsProcessing(false);
+      dispatch(setError('Failed to evaluate answer. Please try again.'));
+    }
+  }, [isProcessing, interview.questions, interview.currentQuestionIndex, dispatch, addMessage, generateNextQuestion, saveProgressToDatabase]);
+
+  // Save candidate data to database
+  const saveCandidateToDatabase = useCallback(async (summaryData, questionsToSave) => {
+    try {
+      // Use the provided questions or fall back to interview.questions
+      const questions = questionsToSave || interview.questions;
+      
+      console.log('Saving candidate with questions:', questions.length);
+      console.log('Summary data:', summaryData);
+      questions.forEach((q, idx) => {
+        console.log(`Q${idx + 1}: answer=${q.answer?.substring(0, 50)}..., score=${q.score}, questionId=${q.questionId}`);
+      });
+      
+      // Ensure questions have sequential numbering and all required fields
+      const questionsWithNumbers = questions.map((q, index) => ({
+        questionId: q.questionId || `q${index + 1}`,
+        questionNumber: index + 1,
+        difficulty: q.difficulty,
+        question: q.question,
+        answer: q.answer || '', // Ensure answer is not undefined
+        score: q.score || 0,
+        feedback: q.feedback || '',
+        timeLimit: q.timeLimit || 0,
+        timeTaken: q.timeTaken || 0,
+        answeredAt: new Date().toISOString(),
+      }));
+
+      const candidateData = {
+        name: candidate.name,
+        email: candidate.email,
+        phone: candidate.phone,
+        designation: candidate.designation,
+        location: candidate.location,
+        github: candidate.github,
+        linkedin: candidate.linkedin,
+        resumeText: interview.resumeText,
+        questions: questionsWithNumbers,
+        totalScore: summaryData.totalScore,
+        summary: summaryData.summary,
+        preInterviewChat: messages.filter(m => m.type !== 'question' && m.type !== 'eval'),
+      };
+
+      console.log('Final candidate data to save:', {
+        totalScore: candidateData.totalScore,
+        questionsCount: candidateData.questions.length,
+        questions: candidateData.questions.map(q => ({ questionId: q.questionId, score: q.score }))
+      });
+
+      await apiClient.post('/api/save-candidate', candidateData);
+      
+      console.log('Candidate saved successfully!');
+    } catch (error) {
+      console.error('Error saving candidate:', error);
+    }
+  }, [candidate, interview.questions, interview.resumeText, messages]);
+
+  // Generate final summary
+  const generateFinalSummary = useCallback(async () => {
+    try {
+      // CRITICAL: Get the absolute latest state from Redux
+      const currentQuestions = interview.questions;
       
       console.log('=== GENERATING FINAL SUMMARY ===');
       console.log('Total questions:', currentQuestions.length);
@@ -386,200 +543,14 @@ export default function IntervieweePage() {
       }));
 
       // Save to database with the SAME questions we used for summary
-      // Use ref to break circular dependency
-      if (saveCandidateToDatabaseRef.current) {
-        await saveCandidateToDatabaseRef.current(summaryData, currentQuestions);
-      }
+      await saveCandidateToDatabase(summaryData, currentQuestions);
       
       addMessage('ai', 'Interview completed! Here are your results.');
     } catch (error) {
       console.error('Error generating summary:', error);
       dispatch(setError('Failed to generate final summary.'));
     }
-  }, [interview.questions, candidate.name, dispatch, addMessage]);
-
-  // Handle answer submission
-  const handleAnswerSubmit = useCallback(async (answer) => {
-    if (isProcessing) return;
-
-    setIsProcessing(true);
-    const currentQ = interview.questions[interview.currentQuestionIndex];
-
-    // Save answer locally
-    dispatch(updateQuestionAnswer({
-      questionId: currentQ.questionId,
-      answer,
-      timeTaken: currentQ.timeLimit - (interview.timeRemaining || 0),
-    }));
-
-    // Add question and answer to chat history
-    const questionNum = interview.currentQuestionIndex + 1;
-    addMessage('ai', `Q${questionNum}: ${currentQ.question}`, 'question');
-    addMessage('user', answer || '(No answer provided)');
-    setIsAiTyping(true);
-
-    try {
-      // Submit to server for evaluation
-      const isLastQuestion = interview.currentQuestionIndex === 5;
-      
-      const response = await apiClient.post('/api/interview-action', {
-        action: 'submit_answer',
-        payload: {
-          questionId: currentQ.questionId,
-          question: currentQ.question,
-          answer,
-          difficulty: currentQ.difficulty,
-          isLastQuestion,
-        },
-      });
-
-      const evalData = response.data;
-      
-      console.log(`📊 Evaluation received for Q${questionNum}:`, {
-        questionId: currentQ.questionId,
-        score: evalData.score,
-        isLastQuestion
-      });
-      
-      // Update question with score and feedback
-      dispatch(updateQuestionEvaluation({
-        questionId: currentQ.questionId,
-        score: evalData.score,
-        feedback: evalData.feedback,
-      }));
-      
-      console.log(`✅ Score updated in Redux for Q${questionNum}`);
-
-      // Show feedback with delay
-      setTimeout(() => {
-        setIsAiTyping(false);
-        addMessage('ai', `Score: ${evalData.score}/100\n\n${evalData.feedback}`, 'eval');
-        
-        if (isLastQuestion) {
-          // CRITICAL FIX FOR 6TH QUESTION:
-          // Create updated questions array with the new score RIGHT NOW
-          // Don't rely on Redux state which might be stale due to closure
-          const updatedQuestions = interview.questions.map((q, idx) => {
-            if (idx === interview.currentQuestionIndex) {
-              // This is the current (6th) question - update it with the fresh score
-              return {
-                ...q,
-                score: evalData.score,
-                feedback: evalData.feedback
-              };
-            }
-            return q;
-          });
-          
-          console.log('🎯 6th question answered. Updated questions array:', {
-            currentIndex: interview.currentQuestionIndex,
-            totalQuestions: updatedQuestions.length,
-            allScores: updatedQuestions.map((q, idx) => ({ 
-              question: idx + 1, 
-              questionId: q.questionId,
-              score: q.score 
-            }))
-          });
-          
-          // Wait for UI updates then generate summary with the CORRECTED questions array
-          setTimeout(() => {
-            setIsProcessing(false);
-            saveProgressToDatabase();
-            
-            // Generate summary with explicitly passed questions that include the 6th score
-            setTimeout(() => {
-              console.log('🚀 Generating final summary with corrected questions...');
-              generateFinalSummaryWithQuestions(updatedQuestions);
-            }, 1500);
-          }, 1000);
-        } else {
-          // For questions 1-5: Generate next question
-          setIsProcessing(false);
-          
-          // Calculate next question number
-          const nextQuestionNumber = interview.currentQuestionIndex + 2;
-          const nextDifficulty = nextQuestionNumber <= 2 ? 'easy' : nextQuestionNumber <= 4 ? 'medium' : 'hard';
-          
-          console.log(`Moving to question ${nextQuestionNumber} (${nextDifficulty})`);
-          
-          // Generate next question FIRST (this adds it to the array)
-          // THEN move to next question index
-          setTimeout(async () => {
-            await generateNextQuestion(nextQuestionNumber, nextDifficulty);
-            // After question is generated and added to array, move to next index
-            setTimeout(() => {
-              dispatch(nextQuestion());
-            }, 500);
-          }, 2000);
-        }
-      }, 1500);
-    } catch (error) {
-      console.error('Error evaluating answer:', error);
-      setIsAiTyping(false);
-      setIsProcessing(false);
-      dispatch(setError('Failed to evaluate answer. Please try again.'));
-    }
-  }, [isProcessing, interview.questions, interview.currentQuestionIndex, interview.timeRemaining, dispatch, addMessage, generateNextQuestion, saveProgressToDatabase, generateFinalSummaryWithQuestions]);
-
-  // Save candidate data to database
-  const saveCandidateToDatabase = useCallback(async (summaryData, questionsToSave) => {
-    try {
-      // Use the provided questions or fall back to interview.questions
-      const questions = questionsToSave || interview.questions;
-      
-      console.log('Saving candidate with questions:', questions.length);
-      console.log('Summary data:', summaryData);
-      questions.forEach((q, idx) => {
-        console.log(`Q${idx + 1}: answer=${q.answer?.substring(0, 50)}..., score=${q.score}, questionId=${q.questionId}`);
-      });
-      
-      // Ensure questions have sequential numbering and all required fields
-      const questionsWithNumbers = questions.map((q, index) => ({
-        questionId: q.questionId || `q${index + 1}`,
-        questionNumber: index + 1,
-        difficulty: q.difficulty,
-        question: q.question,
-        answer: q.answer || '', // Ensure answer is not undefined
-        score: q.score || 0,
-        feedback: q.feedback || '',
-        timeLimit: q.timeLimit || 0,
-        timeTaken: q.timeTaken || 0,
-        answeredAt: new Date().toISOString(),
-      }));
-
-      const candidateData = {
-        name: candidate.name,
-        email: candidate.email,
-        phone: candidate.phone,
-        designation: candidate.designation,
-        location: candidate.location,
-        github: candidate.github,
-        linkedin: candidate.linkedin,
-        resumeText: interview.resumeText,
-        questions: questionsWithNumbers,
-        totalScore: summaryData.totalScore,
-        summary: summaryData.summary,
-        preInterviewChat: messages.filter(m => m.type !== 'question' && m.type !== 'eval'),
-      };
-
-      console.log('Final candidate data to save:', {
-        totalScore: candidateData.totalScore,
-        questionsCount: candidateData.questions.length,
-        questions: candidateData.questions.map(q => ({ questionId: q.questionId, score: q.score }))
-      });
-
-      await apiClient.post('/api/save-candidate', candidateData);
-      
-      console.log('Candidate saved successfully!');
-    } catch (error) {
-      console.error('Error saving candidate:', error);
-    }
-  }, [candidate, interview.questions, interview.resumeText, messages]);
-  
-  // Update ref whenever the function changes
-  useEffect(() => {
-    saveCandidateToDatabaseRef.current = saveCandidateToDatabase;
-  }, [saveCandidateToDatabase]);
+  }, [interview.questions, candidate.name, dispatch, addMessage, saveCandidateToDatabase]);
 
   // Handle start over
   const handleStartOver = () => {
