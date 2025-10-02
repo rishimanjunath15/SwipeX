@@ -68,12 +68,39 @@ export default function IntervieweePage() {
 
   // Check for unfinished session on mount
   useEffect(() => {
-    if (interview.status === 'interviewing' && interview.questions.length > 0) {
-      setShowWelcomeBack(true);
-    } else if (interview.status === 'idle' && interview.error) {
-      // Clear any stale errors when starting fresh
-      dispatch(clearError());
-    }
+    const checkCandidateExists = async () => {
+      // If we have a candidate email in state, check if it exists in MongoDB
+      if (candidate?.email) {
+        try {
+          const response = await apiClient.post('/api/check-candidate', {
+            email: candidate.email,
+          });
+          
+          // If candidate doesn't exist in MongoDB, they were deleted - clear local state
+          if (!response.data.exists) {
+            console.log('Candidate deleted from MongoDB - clearing local state');
+            dispatch(resetInterview());
+            dispatch(clearProfile());
+            setMessages([]);
+            setFieldInput('');
+            setProcessingField(null);
+            setShowWelcomeBack(false);
+            return;
+          }
+        } catch (error) {
+          console.error('Error checking candidate existence:', error);
+        }
+      }
+      
+      if (interview.status === 'interviewing' && interview.questions.length > 0) {
+        setShowWelcomeBack(true);
+      } else if (interview.status === 'idle' && interview.error) {
+        // Clear any stale errors when starting fresh
+        dispatch(clearError());
+      }
+    };
+    
+    checkCandidateExists();
   }, []);
 
   // Save chat messages to database (debounced)
@@ -360,15 +387,32 @@ export default function IntervieweePage() {
         addMessage('ai', `Score: ${evalData.score}/100\n\n${evalData.feedback}`, 'eval');
         
         if (isLastQuestion) {
-          // Save progress to database before generating summary
+          // For the last question, we need to ensure we capture the updated state
+          // Wait for Redux state to update, then generate summary
           setTimeout(() => {
-            saveProgressToDatabase();
-          }, 500);
-          
-          // Generate final summary - wait longer to ensure Redux state is updated
-          setTimeout(() => {
-            generateFinalSummary();
-          }, 2000);
+            // Get the latest state after all updates
+            const updatedQuestions = interview.questions.map((q, idx) => {
+              if (idx === interview.currentQuestionIndex) {
+                // This is the current question - ensure it has the latest data
+                return {
+                  ...q,
+                  answer: answer || '',
+                  score: evalData.score,
+                  feedback: evalData.feedback,
+                  timeTaken: q.timeLimit - (interview.timeRemaining || 0),
+                };
+              }
+              return q;
+            });
+            
+            console.log('Final questions before summary:', updatedQuestions.length);
+            updatedQuestions.forEach((q, idx) => {
+              console.log(`Q${idx + 1}: answer length=${q.answer?.length || 0}, score=${q.score}`);
+            });
+            
+            // Generate summary with the explicitly updated questions
+            generateFinalSummaryWithQuestions(updatedQuestions);
+          }, 1500);
         } else {
           // Calculate next question number
           const nextQuestionNumber = interview.currentQuestionIndex + 2; // +2 because: current (0-5) + 1 for next index + 1 for human numbering
@@ -391,7 +435,7 @@ export default function IntervieweePage() {
       setIsProcessing(false);
       dispatch(setError('Failed to evaluate answer. Please try again.'));
     }
-  }, [isProcessing, interview.questions, interview.currentQuestionIndex, dispatch, addMessage, generateNextQuestion, saveProgressToDatabase]);
+  }, [isProcessing, interview.questions, interview.currentQuestionIndex, interview.timeRemaining, dispatch, addMessage, generateNextQuestion, saveProgressToDatabase, generateFinalSummaryWithQuestions]);
 
   // Save candidate data to database
   const saveCandidateToDatabase = useCallback(async (summaryData, questionsToSave) => {
@@ -439,7 +483,36 @@ export default function IntervieweePage() {
     }
   }, [candidate, interview.questions, interview.resumeText, messages]);
 
-  // Generate final summary
+  // Generate final summary with explicit questions parameter
+  const generateFinalSummaryWithQuestions = useCallback(async (questionsToUse) => {
+    try {
+      console.log('Generating summary with questions:', questionsToUse.length);
+      console.log('Last question:', questionsToUse[questionsToUse.length - 1]);
+      
+      const response = await apiClient.post('/api/generate-summary', {
+        questions: questionsToUse,
+        candidateName: candidate.name,
+      });
+
+      const summaryData = response.data;
+      
+      dispatch(setFinalResults({
+        totalScore: summaryData.totalScore,
+        summary: summaryData.summary,
+        breakdown: summaryData.breakdown,
+      }));
+
+      // Save to database with the SAME questions we used for summary
+      await saveCandidateToDatabase(summaryData, questionsToUse);
+      
+      addMessage('ai', 'Interview completed! Here are your results.');
+    } catch (error) {
+      console.error('Error generating summary:', error);
+      dispatch(setError('Failed to generate final summary.'));
+    }
+  }, [candidate.name, dispatch, addMessage, saveCandidateToDatabase]);
+
+  // Generate final summary (legacy - for backward compatibility)
   const generateFinalSummary = useCallback(async () => {
     try {
       // Use the current interview state - this will always be the latest
