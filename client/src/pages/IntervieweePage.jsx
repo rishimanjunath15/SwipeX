@@ -372,8 +372,8 @@ export default function IntervieweePage() {
             generateFinalSummary();
           }, 2000);
         } else {
-          // Calculate next question number
-          const nextQuestionNumber = interview.currentQuestionIndex + 2; // +2 because: current (0-5) + 1 for next index + 1 for human numbering
+          // Calculate next question number (for questions 1-5)
+          const nextQuestionNumber = interview.currentQuestionIndex + 2; // +2 because: current (0-4) + 1 for next index + 1 for human numbering
           const nextDifficulty = nextQuestionNumber <= 2 ? 'easy' : nextQuestionNumber <= 4 ? 'medium' : 'hard';
           
           // Generate next question FIRST (this adds it to the array)
@@ -402,8 +402,9 @@ export default function IntervieweePage() {
       const questions = questionsToSave || interview.questions;
       
       console.log('Saving candidate with questions:', questions.length);
+      console.log('Summary data:', summaryData);
       questions.forEach((q, idx) => {
-        console.log(`Q${idx + 1}: answer=${q.answer?.substring(0, 50)}..., score=${q.score}`);
+        console.log(`Q${idx + 1}: answer=${q.answer?.substring(0, 50)}..., score=${q.score}, questionId=${q.questionId}`);
       });
       
       // Ensure questions have sequential numbering and all required fields
@@ -420,7 +421,7 @@ export default function IntervieweePage() {
         answeredAt: new Date().toISOString(),
       }));
 
-      await apiClient.post('/api/save-candidate', {
+      const candidateData = {
         name: candidate.name,
         email: candidate.email,
         phone: candidate.phone,
@@ -433,7 +434,15 @@ export default function IntervieweePage() {
         totalScore: summaryData.totalScore,
         summary: summaryData.summary,
         preInterviewChat: messages.filter(m => m.type !== 'question' && m.type !== 'eval'),
+      };
+
+      console.log('Final candidate data to save:', {
+        totalScore: candidateData.totalScore,
+        questionsCount: candidateData.questions.length,
+        questions: candidateData.questions.map(q => ({ questionId: q.questionId, score: q.score }))
       });
+
+      await apiClient.post('/api/save-candidate', candidateData);
       
       console.log('Candidate saved successfully!');
     } catch (error) {
@@ -448,7 +457,29 @@ export default function IntervieweePage() {
       const currentQuestions = interview.questions;
       
       console.log('Generating summary with questions:', currentQuestions.length);
-      console.log('Last question:', currentQuestions[currentQuestions.length - 1]);
+      console.log('Questions data:', currentQuestions.map((q, idx) => ({
+        index: idx,
+        questionId: q.questionId,
+        score: q.score,
+        hasAnswer: !!q.answer
+      })));
+      
+      // Ensure we have all 6 questions with scores
+      if (currentQuestions.length !== 6) {
+        console.error('Expected 6 questions, got:', currentQuestions.length);
+        dispatch(setError('Interview incomplete. Please restart.'));
+        return;
+      }
+
+      // Check if all questions have scores
+      const questionsWithScores = currentQuestions.filter(q => q.score !== undefined && q.score !== null);
+      console.log('Questions with scores:', questionsWithScores.length);
+      
+      if (questionsWithScores.length !== 6) {
+        console.error('Not all questions have scores. Questions with scores:', questionsWithScores.length);
+        // Try to regenerate missing scores
+        console.log('Attempting to regenerate summary anyway...');
+      }
       
       const response = await apiClient.post('/api/generate-summary', {
         questions: currentQuestions,
@@ -456,6 +487,21 @@ export default function IntervieweePage() {
       });
 
       const summaryData = response.data;
+      console.log('Summary response:', summaryData);
+      
+      if (!summaryData.totalScore || summaryData.totalScore === 0) {
+        console.error('Summary generation returned zero score:', summaryData);
+        // Fallback: calculate average manually
+        const validScores = currentQuestions
+          .map(q => q.score)
+          .filter(score => typeof score === 'number' && score >= 0 && score <= 100);
+        
+        if (validScores.length > 0) {
+          const manualTotalScore = Math.round(validScores.reduce((sum, score) => sum + score, 0) / validScores.length);
+          console.log('Manual calculated score:', manualTotalScore);
+          summaryData.totalScore = manualTotalScore;
+        }
+      }
       
       dispatch(setFinalResults({
         totalScore: summaryData.totalScore,
@@ -555,7 +601,7 @@ export default function IntervieweePage() {
             <CandidateProfile profile={candidate} />
             <ChatWindow messages={messages} isAiTyping={isAiTyping} />
             
-            {interview.currentQuestionIndex < interview.questions.length && !isProcessing && (
+            {interview.currentQuestionIndex < interview.questions.length && interview.currentQuestionIndex < 6 && !isProcessing && (
               <QuestionCard
                 question={interview.questions[interview.currentQuestionIndex]}
                 questionNumber={interview.currentQuestionIndex + 1}

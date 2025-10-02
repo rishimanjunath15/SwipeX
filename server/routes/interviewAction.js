@@ -127,14 +127,35 @@ router.post('/generate-summary', async (req, res) => {
   try {
     const { questions, candidateName } = req.body;
 
+    console.log('Generate summary request:', {
+      candidateName,
+      questionsCount: questions?.length,
+      questions: questions?.map((q, idx) => ({
+        index: idx,
+        questionId: q.questionId,
+        score: q.score,
+        hasAnswer: !!q.answer
+      }))
+    });
+
     if (!questions || questions.length === 0) {
       return res.status(400).json({
         error: 'No questions provided for summary generation',
       });
     }
 
+    if (questions.length !== 6) {
+      console.warn(`Expected 6 questions, received ${questions.length}`);
+    }
+
+    // Check if questions have scores
+    const questionsWithScores = questions.filter(q => typeof q.score === 'number' && q.score >= 0);
+    console.log(`Questions with valid scores: ${questionsWithScores.length}/${questions.length}`);
+
     // Generate final summary using Gemini
     const summary = await generateFinalSummary(questions, candidateName);
+
+    console.log('Generated summary:', summary);
 
     res.json({
       type: 'final',

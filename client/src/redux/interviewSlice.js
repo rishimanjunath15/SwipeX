@@ -92,7 +92,7 @@ const interviewSlice = createSlice({
     
     // Move to next question
     nextQuestion: (state) => {
-      if (state.currentQuestionIndex < state.questions.length - 1) {
+      if (state.currentQuestionIndex < 5) { // Allow incrementing up to index 5 (6th question)
         state.currentQuestionIndex += 1;
         state.currentAnswer = '';
         state.timeRemaining = state.questions[state.currentQuestionIndex]?.timeLimit || null;

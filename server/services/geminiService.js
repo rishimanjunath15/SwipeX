@@ -241,9 +241,16 @@ export async function generateFinalSummary(questions, candidateName) {
   const questionsText = questions.map((q, index) => {
     const questionNum = index + 1;
     const difficulty = q.difficulty || (questionNum <= 2 ? 'easy' : questionNum <= 4 ? 'medium' : 'hard');
-    return `Q${questionNum} (${difficulty}): ${q.score}/100 - "${q.question.substring(0, 60)}..."`;
+    const score = q.score || 0;
+    return `Q${questionNum} (${difficulty}): ${score}/100 - "${q.question.substring(0, 60)}..."`;
   }).join('\n');
   
+  console.log('Questions for summary generation:', questions.map((q, idx) => ({
+    index: idx,
+    score: q.score,
+    questionId: q.questionId
+  })));
+
   const prompt = `You are an interview summary generator for a Full Stack React/Node.js technical interview. Return JSON only.
 
 INTERVIEW STRUCTURE (6 Questions Total):
@@ -278,7 +285,9 @@ Example:
 
 Return ONLY valid JSON with all ${questions.length} questions in the breakdown array.`;
 
-  return callGemini(prompt);
+  const result = await callGemini(prompt);
+  console.log('Gemini summary response:', result);
+  return result;
 }
 
 /**
